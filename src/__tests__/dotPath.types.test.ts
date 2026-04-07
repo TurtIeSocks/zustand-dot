@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import { createStore } from 'zustand/vanilla';
-import { type DotPath, dotPath, type PathValue } from '../index';
+import { dotPath, type Get, type Paths } from '../index';
 
 interface TestState {
   user: {
@@ -15,49 +15,45 @@ interface TestState {
 
 describe('DotPath type', () => {
   it('generates top-level paths', () => {
-    expectTypeOf<'user'>().toMatchTypeOf<DotPath<TestState>>();
-    expectTypeOf<'items'>().toMatchTypeOf<DotPath<TestState>>();
-    expectTypeOf<'count'>().toMatchTypeOf<DotPath<TestState>>();
+    expectTypeOf<'user'>().toMatchTypeOf<Paths<TestState>>();
+    expectTypeOf<'items'>().toMatchTypeOf<Paths<TestState>>();
+    expectTypeOf<'count'>().toMatchTypeOf<Paths<TestState>>();
   });
 
   it('generates nested paths', () => {
-    expectTypeOf<'user.name'>().toMatchTypeOf<DotPath<TestState>>();
-    expectTypeOf<'user.age'>().toMatchTypeOf<DotPath<TestState>>();
-    expectTypeOf<'user.tags'>().toMatchTypeOf<DotPath<TestState>>();
+    expectTypeOf<'user.name'>().toMatchTypeOf<Paths<TestState>>();
+    expectTypeOf<'user.age'>().toMatchTypeOf<Paths<TestState>>();
+    expectTypeOf<'user.tags'>().toMatchTypeOf<Paths<TestState>>();
   });
 
   it('generates array element paths', () => {
-    expectTypeOf<`items.${number}`>().toMatchTypeOf<DotPath<TestState>>();
-    expectTypeOf<`items.${number}.id`>().toMatchTypeOf<DotPath<TestState>>();
-    expectTypeOf<`items.${number}.title`>().toMatchTypeOf<DotPath<TestState>>();
+    expectTypeOf<`items.${number}`>().toMatchTypeOf<Paths<TestState>>();
+    expectTypeOf<`items.${number}.id`>().toMatchTypeOf<Paths<TestState>>();
+    expectTypeOf<`items.${number}.title`>().toMatchTypeOf<Paths<TestState>>();
   });
 
   it('includes optional properties', () => {
-    expectTypeOf<'optional'>().toMatchTypeOf<DotPath<TestState>>();
+    expectTypeOf<'optional'>().toMatchTypeOf<Paths<TestState>>();
   });
 });
 
 describe('PathValue type', () => {
   it('resolves top-level types', () => {
-    expectTypeOf<PathValue<TestState, 'count'>>().toEqualTypeOf<number>();
-    expectTypeOf<PathValue<TestState, 'user'>>().toEqualTypeOf<
-      TestState['user']
-    >();
+    expectTypeOf<Get<TestState, 'count'>>().toEqualTypeOf<number>();
+    expectTypeOf<Get<TestState, 'user'>>().toEqualTypeOf<TestState['user']>();
   });
 
   it('resolves nested types', () => {
-    expectTypeOf<PathValue<TestState, 'user.name'>>().toEqualTypeOf<string>();
-    expectTypeOf<PathValue<TestState, 'user.age'>>().toEqualTypeOf<number>();
+    expectTypeOf<Get<TestState, 'user.name'>>().toEqualTypeOf<string>();
+    expectTypeOf<Get<TestState, 'user.age'>>().toEqualTypeOf<number>();
   });
 
   it('resolves array element types', () => {
-    expectTypeOf<PathValue<TestState, 'items'>>().toEqualTypeOf<
-      TestState['items']
-    >();
+    expectTypeOf<Get<TestState, 'items'>>().toEqualTypeOf<TestState['items']>();
   });
 
   it('resolves optional property types', () => {
-    expectTypeOf<PathValue<TestState, 'optional'>>().toEqualTypeOf<
+    expectTypeOf<Get<TestState, 'optional'>>().toEqualTypeOf<
       TestState['optional']
     >();
   });

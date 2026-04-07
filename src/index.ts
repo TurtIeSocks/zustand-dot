@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef } from 'react';
+import type { Get, Paths } from 'type-fest';
 import {
   type StateCreator,
   type StoreApi,
@@ -10,51 +11,8 @@ import {
 // 1. Type Utilities
 // ==========================================
 
-// Helper to prevent traversing into functions
-type NonFunction =
-  | object
-  | string
-  | number
-  | boolean
-  | symbol
-  | undefined
-  | null;
-
-/**
- * DotPath<T>
- * Generates all valid dot-notation paths for object T.
- * - Stops at functions.
- * - Arrays support `${number}` or specific indices.
- */
-export type DotPath<T> = T extends Function
-  ? never
-  : T extends Array<infer U>
-    ? `${number}` | `${number}.${DotPath<U>}`
-    : T extends object
-      ? {
-          [K in keyof T & (string | number)]:
-            | `${K}`
-            | (T[K] extends NonFunction ? `${K}.${DotPath<T[K]>}` : never);
-        }[keyof T & (string | number)]
-      : never;
-
-/**
- * PathValue<T, P>
- * Infers the value type at path P within T.
- * - Handles optional properties (including undefined).
- * - Handles array indexing.
- */
-export type PathValue<T, P extends string> = P extends `${infer K}.${infer R}`
-  ? K extends keyof T
-    ? PathValue<T[K], R>
-    : T extends Array<infer U>
-      ? PathValue<U, R> // Array access via string index (like "0")
-      : never
-  : P extends keyof T
-    ? T[P]
-    : T extends Array<infer U>
-      ? U
-      : never;
+export type ToString<T> = T extends string | number ? `${T}` : never;
+export type { Get, Paths };
 
 // ==========================================
 // 2. Runtime Utilities
@@ -257,28 +215,35 @@ function useDeepCompareMemo<T>(value: T): T {
  * Provides deep dot-path access for getting, setting, subscribing to, and resetting nested state.
  */
 export interface StoreWithPaths<T> {
-  usePath: <P extends DotPath<T>, D = undefined>(
+  usePath: <
+    P extends Paths<T>,
+    D extends Get<T, ToString<P>> | undefined = undefined,
+  >(
     path: P,
     defaultValue?: D
   ) => [
-    D extends undefined ? PathValue<T, P> : NonNullable<PathValue<T, P>> | D,
+    D extends undefined
+      ? Get<T, ToString<P>>
+      : NonNullable<Get<T, ToString<P>>> | D,
     (
       valOrUpdater:
-        | PathValue<T, P>
-        | ((prev: PathValue<T, P>) => PathValue<T, P>)
+        | Get<T, ToString<P>>
+        | ((prev: Get<T, ToString<P>>) => Get<T, ToString<P>>)
     ) => void,
   ];
-  getPath: <P extends DotPath<T>, D = undefined>(
+  getPath: <P extends Paths<T>, D = undefined>(
     path: P,
     defaultValue?: D
-  ) => D extends undefined ? PathValue<T, P> : NonNullable<PathValue<T, P>> | D;
-  setPath: <P extends DotPath<T>>(
+  ) => D extends undefined
+    ? Get<T, ToString<P>>
+    : NonNullable<Get<T, ToString<P>>> | D;
+  setPath: <P extends Paths<T>>(
     path: P,
     valueOrUpdater:
-      | PathValue<T, P>
-      | ((prev: PathValue<T, P>) => PathValue<T, P>)
+      | Get<T, ToString<P>>
+      | ((prev: Get<T, ToString<P>>) => Get<T, ToString<P>>)
   ) => void;
-  resetPath: (path: DotPath<T>) => void;
+  resetPath: (path: Paths<T>) => void;
 }
 
 // Type for the middleware configuration
