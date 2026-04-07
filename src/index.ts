@@ -62,32 +62,53 @@ export type PathValue<T, P extends string> = P extends `${infer K}.${infer R}`
 // ==========================================
 
 /**
- * Parses path string into segments.
- * Handles:
- * - "a.b" -> ["a", "b"]
- * - "a[0]" -> ["a", "0"]
- * - "a['b.c']" -> ["a", "b.c"]
+ * Hoisted regex for bracket/quote path parsing.
+ * Only used when the fast-path (simple dot notation) is not applicable.
+ */
+const BRACKET_PATH_RE = /[^.[\]"']+|\["([^"]*)"\]|\['([^']*)'\]/g;
+
+/** Cache of parsed path segments, keyed by the original path string. */
+const pathCache = new Map<string, string[]>();
+
+/**
+ * Parses a path string into an array of segments. Results are cached.
+ *
+ * Fast-path: paths without brackets or quotes use `String.split('.')`.
+ * Slow-path: falls back to regex for bracket/quote syntax.
+ *
+ * @example
+ * parsePath("a.b")       // ["a", "b"]
+ * parsePath("a[0]")      // ["a", "0"]
+ * parsePath("a['b.c']")  // ["a", "b.c"]
  */
 const parsePath = (path: string): string[] => {
-  // Matches:
-  // 1. Property names (including array indices like '0'): [^.[\]]+
-  // 2. Bracketed quotes: \['(.*?)'\] or \["(.*?)"\]
-  // 3. Bracketed numbers: \[(\d+)\]
-  const segments: string[] = [];
-  // Revised regex to capture all cases correctly
-  const regex = /[^.[\]"']+|\["([^"]*)"\]|\['([^']*)'\]/g;
+  const cached = pathCache.get(path);
+  if (cached) return cached;
 
-  let match: RegExpExecArray | null = regex.exec(path);
-  while (match !== null) {
-    if (match[1] !== undefined) {
-      segments.push(match[1]); // Double quotes content
-    } else if (match[2] !== undefined) {
-      segments.push(match[2]); // Single quotes content
-    } else {
-      segments.push(match[0]); // Standard property or index
+  let segments: string[];
+
+  // Fast-path: simple dot notation (no brackets or quotes)
+  if (path.indexOf('[') === -1) {
+    segments = path.split('.');
+  } else {
+    // Slow-path: bracket/quote syntax requires regex
+    segments = [];
+    // Reset lastIndex since the regex is module-scoped with /g flag
+    BRACKET_PATH_RE.lastIndex = 0;
+    let match: RegExpExecArray | null = BRACKET_PATH_RE.exec(path);
+    while (match !== null) {
+      if (match[1] !== undefined) {
+        segments.push(match[1]); // Double-quoted key
+      } else if (match[2] !== undefined) {
+        segments.push(match[2]); // Single-quoted key
+      } else {
+        segments.push(match[0]); // Unquoted segment or index
+      }
+      match = BRACKET_PATH_RE.exec(path);
     }
-    match = regex.exec(path);
   }
+
+  pathCache.set(path, segments);
   return segments;
 };
 
@@ -105,26 +126,27 @@ const deepGet = (obj: unknown, pathSegments: string[]): unknown => {
 };
 
 /**
- * Immutable deep set.
- * - Clones objects/arrays along the path.
+ * Immutable deep set with index-based recursion.
+ * Avoids allocating intermediate arrays — walks `segments` via a `depth` index.
+ *
+ * - Clones objects/arrays along the path (structural sharing).
  * - Creates arrays for numeric keys if missing.
  * - Creates objects for string keys if missing.
  */
 const deepSet = (
   obj: unknown,
-  pathSegments: string[],
-  valueOrUpdater: unknown
+  segments: string[],
+  valueOrUpdater: unknown,
+  depth = 0
 ): unknown => {
-  if (pathSegments.length === 0) {
+  if (depth === segments.length) {
     return typeof valueOrUpdater === 'function'
       ? (valueOrUpdater as (prev: unknown) => unknown)(obj)
       : valueOrUpdater;
   }
 
-  const [head, ...tail] = pathSegments;
-
-  // Decide structure type if creating new: numeric key -> array, else object
-  const isNumericKey = !Number.isNaN(Number(head));
+  const key = segments[depth];
+  const isNumericKey = !Number.isNaN(Number(key));
 
   // Clone current level or create new
   let nextLevel: Record<string, unknown> | unknown[];
@@ -136,13 +158,9 @@ const deepSet = (
     nextLevel = isNumericKey ? [] : {};
   }
 
-  // Recurse
-  const currentValue = (nextLevel as Record<string, unknown>)[head];
-  (nextLevel as Record<string, unknown>)[head] = deepSet(
-    currentValue,
-    tail,
-    valueOrUpdater
-  );
+  // Recurse with incremented depth instead of sliced array
+  const record = nextLevel as Record<string, unknown>;
+  record[key] = deepSet(record[key], segments, valueOrUpdater, depth + 1);
 
   return nextLevel;
 };
