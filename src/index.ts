@@ -231,7 +231,10 @@ export interface StoreWithPaths<T> {
         | ((prev: Get<T, ToString<P>>) => Get<T, ToString<P>>)
     ) => void,
   ];
-  getPath: <P extends Paths<T>, D = undefined>(
+  getPath: <
+    P extends Paths<T>,
+    D extends Get<T, ToString<P>> | undefined = undefined,
+  >(
     path: P,
     defaultValue?: D
   ) => D extends undefined

@@ -167,13 +167,7 @@ interface LinkedList {
   next: LinkedList | null;
 }
 
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonObject
-  | JsonArray;
+type JsonValue = string | number | boolean | null | JsonObject | JsonArray;
 interface JsonObject {
   [key: string]: JsonValue;
 }
@@ -227,9 +221,7 @@ describe('Recursive type: Paths generation', () => {
     expectTypeOf<'fs'>().toMatchTypeOf<Paths<RecursiveState>>();
     expectTypeOf<'fs.name'>().toMatchTypeOf<Paths<RecursiveState>>();
     expectTypeOf<'fs.files'>().toMatchTypeOf<Paths<RecursiveState>>();
-    expectTypeOf<`fs.files.${number}`>().toMatchTypeOf<
-      Paths<RecursiveState>
-    >();
+    expectTypeOf<`fs.files.${number}`>().toMatchTypeOf<Paths<RecursiveState>>();
     expectTypeOf<`fs.files.${number}.name`>().toMatchTypeOf<
       Paths<RecursiveState>
     >();
@@ -245,18 +237,14 @@ describe('Recursive type: Paths generation', () => {
 describe('Recursive type: Get resolution', () => {
   it('resolves types through self-referencing tree', () => {
     expectTypeOf<Get<RecursiveState, 'tree'>>().toEqualTypeOf<TreeNode>();
-    expectTypeOf<
-      Get<RecursiveState, 'tree.value'>
-    >().toEqualTypeOf<string>();
-    expectTypeOf<
-      Get<RecursiveState, 'tree.children'>
-    >().toEqualTypeOf<TreeNode[]>();
+    expectTypeOf<Get<RecursiveState, 'tree.value'>>().toEqualTypeOf<string>();
+    expectTypeOf<Get<RecursiveState, 'tree.children'>>().toEqualTypeOf<
+      TreeNode[]
+    >();
   });
 
   it('resolves types through nullable linked list', () => {
-    expectTypeOf<
-      Get<RecursiveState, 'list.data'>
-    >().toEqualTypeOf<number>();
+    expectTypeOf<Get<RecursiveState, 'list.data'>>().toEqualTypeOf<number>();
     expectTypeOf<
       Get<RecursiveState, 'list.next'>
     >().toEqualTypeOf<LinkedList | null>();
@@ -264,12 +252,10 @@ describe('Recursive type: Get resolution', () => {
 
   it('resolves types through mutually recursive types', () => {
     expectTypeOf<Get<RecursiveState, 'fs'>>().toEqualTypeOf<Folder>();
-    expectTypeOf<
-      Get<RecursiveState, 'fs.files'>
-    >().toEqualTypeOf<FileEntry[]>();
-    expectTypeOf<
-      Get<RecursiveState, 'fs.name'>
-    >().toEqualTypeOf<string>();
+    expectTypeOf<Get<RecursiveState, 'fs.files'>>().toEqualTypeOf<
+      FileEntry[]
+    >();
+    expectTypeOf<Get<RecursiveState, 'fs.name'>>().toEqualTypeOf<string>();
   });
 });
 
