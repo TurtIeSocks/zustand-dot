@@ -26,7 +26,6 @@ type NonFunction =
  * - Stops at functions.
  * - Arrays support `${number}` or specific indices.
  */
-// biome-ignore lint/complexity/noBannedTypes: Function is used as a type constraint to filter out callable types from path traversal
 export type DotPath<T> = T extends Function
   ? never
   : T extends Array<infer U>
@@ -118,51 +117,67 @@ const parsePath = (path: string): string[] => {
  */
 const deepGet = (obj: unknown, pathSegments: string[]): unknown => {
   let current: unknown = obj;
-  for (const key of pathSegments) {
-    if (current === null || current === undefined) return undefined;
-    current = (current as Record<string, unknown>)[key];
+  for (let i = 0; i < pathSegments.length; i++) {
+    if (current == null) return undefined;
+    current = (current as Record<string, unknown>)[pathSegments[i]];
   }
   return current;
 };
 
+/** Matches strings that are purely numeric (array indices). */
+const NUMERIC_RE = /^\d+$/;
+
 /**
- * Immutable deep set with index-based recursion.
- * Avoids allocating intermediate arrays — walks `segments` via a `depth` index.
+ * Immutable deep set — iterative, zero-recursion.
  *
- * - Clones objects/arrays along the path (structural sharing).
- * - Creates arrays for numeric keys if missing.
- * - Creates objects for string keys if missing.
+ * Walks the path once to clone each level into a stack array,
+ * applies the value at the leaf, then links clones bottom-up.
+ * Avoids N recursive function calls and intermediate array allocations.
  */
 const deepSet = (
-  obj: unknown,
+  root: unknown,
   segments: string[],
-  valueOrUpdater: unknown,
-  depth = 0
+  valueOrUpdater: unknown
 ): unknown => {
-  if (depth === segments.length) {
+  const len = segments.length;
+  if (len === 0) {
     return typeof valueOrUpdater === 'function'
-      ? (valueOrUpdater as (prev: unknown) => unknown)(obj)
+      ? (valueOrUpdater as (prev: unknown) => unknown)(root)
       : valueOrUpdater;
   }
 
-  const key = segments[depth];
-  const isNumericKey = !Number.isNaN(Number(key));
+  // Phase 1: Walk down, clone each level
+  const stack: (Record<string, unknown> | unknown[])[] = new Array(len);
+  let current: unknown = root;
 
-  // Clone current level or create new
-  let nextLevel: Record<string, unknown> | unknown[];
-  if (Array.isArray(obj)) {
-    nextLevel = [...obj];
-  } else if (obj && typeof obj === 'object') {
-    nextLevel = { ...(obj as Record<string, unknown>) };
-  } else {
-    nextLevel = isNumericKey ? [] : {};
+  for (let i = 0; i < len; i++) {
+    if (Array.isArray(current)) {
+      stack[i] = current.slice() as unknown[];
+    } else if (current != null && typeof current === 'object') {
+      stack[i] = { ...(current as Record<string, unknown>) };
+    } else {
+      stack[i] = NUMERIC_RE.test(segments[i]) ? [] : {};
+    }
+    current =
+      current != null && typeof current === 'object'
+        ? (current as Record<string, unknown>)[segments[i]]
+        : undefined;
   }
 
-  // Recurse with incremented depth instead of sliced array
-  const record = nextLevel as Record<string, unknown>;
-  record[key] = deepSet(record[key], segments, valueOrUpdater, depth + 1);
+  // Phase 2: Apply value at the leaf
+  // `current` now holds the original value at the leaf path
+  const leaf = stack[len - 1] as Record<string, unknown>;
+  leaf[segments[len - 1]] =
+    typeof valueOrUpdater === 'function'
+      ? (valueOrUpdater as (prev: unknown) => unknown)(current)
+      : valueOrUpdater;
 
-  return nextLevel;
+  // Phase 3: Link clones bottom-up
+  for (let i = len - 2; i >= 0; i--) {
+    (stack[i] as Record<string, unknown>)[segments[i]] = stack[i + 1];
+  }
+
+  return stack[0];
 };
 
 /**
@@ -241,7 +256,7 @@ function useDeepCompareMemo<T>(value: T): T {
  * Methods added to a Zustand store by the `dotPath` middleware.
  * Provides deep dot-path access for getting, setting, subscribing to, and resetting nested state.
  */
-export type StoreWithPaths<T> = {
+export interface StoreWithPaths<T> {
   usePath: <P extends DotPath<T>, D = undefined>(
     path: P,
     defaultValue?: D
@@ -285,24 +300,18 @@ declare module 'zustand/vanilla' {
 }
 
 const dotPathImpl =
-  // biome-ignore lint/suspicious/noExplicitAny: Canonical zustand middleware pattern — type safety provided by the exported DotPathMiddleware cast
     (config: StateCreator<any, any, any>) =>
     (
-      // biome-ignore lint/suspicious/noExplicitAny: StoreApi generic must match StateCreator
       set: StoreApi<any>['setState'],
-      // biome-ignore lint/suspicious/noExplicitAny: StoreApi generic must match StateCreator
       get: StoreApi<any>['getState'],
-      // biome-ignore lint/suspicious/noExplicitAny: StoreApi generic must match StateCreator
       api: StoreApi<any>
     ) => {
       const initialState = config(set, get, api);
 
       const initialSnapshot = structuredClone(initialState);
 
-      // biome-ignore lint/suspicious/noExplicitAny: Bridge between untyped impl and typed StoreWithPaths interface
       const augmentedApi = api as unknown as StoreWithPaths<any>;
 
-      // biome-ignore lint/suspicious/noExplicitAny: Return must satisfy StoreWithPaths<any> conditional generic
       augmentedApi.getPath = (path: string, defaultValue?: unknown): any => {
         const raw = deepGet(get(), parsePath(path));
         if ((raw === null || raw === undefined) && defaultValue !== undefined) {
@@ -312,11 +321,7 @@ const dotPathImpl =
       };
 
       augmentedApi.setPath = (path: string, valueOrUpdater: unknown) => {
-        // biome-ignore lint/suspicious/noExplicitAny: Constrained by StoreApi<any>["setState"] callback signature
-        set((state: any) => {
-          const segments = parsePath(path);
-          return deepSet(state, segments, valueOrUpdater);
-        });
+        set(deepSet(get(), parsePath(path), valueOrUpdater), true);
       };
 
       augmentedApi.resetPath = (path: string) => {
@@ -326,18 +331,15 @@ const dotPathImpl =
           initialValue && typeof initialValue === 'object'
             ? structuredClone(initialValue)
             : initialValue;
-        // biome-ignore lint/suspicious/noExplicitAny: Constrained by StoreApi<any>["setState"] callback signature
-        set((state: any) => deepSet(state, segments, valueToRestore));
+        set(deepSet(get(), segments, valueToRestore), true);
       };
 
-      // biome-ignore lint/suspicious/noExplicitAny: Return must satisfy StoreWithPaths<any> conditional generic
       augmentedApi.usePath = (path: string, defaultValue?: unknown): any => {
         const stableDefault = useDeepCompareMemo(defaultValue);
 
         const segments = useMemo(() => parsePath(path), [path]);
 
         const selector = useCallback(
-          // biome-ignore lint/suspicious/noExplicitAny: Selector param constrained by StoreApi<any> state type
           (state: any) => {
             const raw = deepGet(state, segments);
             if (
@@ -351,13 +353,11 @@ const dotPathImpl =
           [segments, stableDefault]
         );
 
-        // biome-ignore lint/suspicious/noExplicitAny: useStore requires compatible StoreApi type
         const value = useStore(api as any, selector);
 
         const setter = useCallback(
           (updater: unknown) => {
-            // biome-ignore lint/suspicious/noExplicitAny: Constrained by StoreApi<any>["setState"] callback signature
-            set((state: any) => deepSet(state, segments, updater));
+            set(deepSet(get(), segments, updater), true);
           },
           [segments]
         );
