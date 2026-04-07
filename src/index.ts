@@ -279,7 +279,7 @@ export interface StoreWithPaths<T> {
       | ((prev: PathValue<T, P>) => PathValue<T, P>)
   ) => void;
   resetPath: (path: DotPath<T>) => void;
-};
+}
 
 // Type for the middleware configuration
 type DotPathMiddleware = <
@@ -300,73 +300,73 @@ declare module 'zustand/vanilla' {
 }
 
 const dotPathImpl =
-    (config: StateCreator<any, any, any>) =>
-    (
-      set: StoreApi<any>['setState'],
-      get: StoreApi<any>['getState'],
-      api: StoreApi<any>
-    ) => {
-      const initialState = config(set, get, api);
+  (config: StateCreator<any, any, any>) =>
+  (
+    set: StoreApi<any>['setState'],
+    get: StoreApi<any>['getState'],
+    api: StoreApi<any>
+  ) => {
+    const initialState = config(set, get, api);
 
-      const initialSnapshot = structuredClone(initialState);
+    const initialSnapshot = structuredClone(initialState);
 
-      const augmentedApi = api as unknown as StoreWithPaths<any>;
+    const augmentedApi = api as unknown as StoreWithPaths<any>;
 
-      augmentedApi.getPath = (path: string, defaultValue?: unknown): any => {
-        const raw = deepGet(get(), parsePath(path));
-        if ((raw === null || raw === undefined) && defaultValue !== undefined) {
-          return defaultValue;
-        }
-        return raw;
-      };
-
-      augmentedApi.setPath = (path: string, valueOrUpdater: unknown) => {
-        set(deepSet(get(), parsePath(path), valueOrUpdater), true);
-      };
-
-      augmentedApi.resetPath = (path: string) => {
-        const segments = parsePath(path);
-        const initialValue = deepGet(initialSnapshot, segments);
-        const valueToRestore =
-          initialValue && typeof initialValue === 'object'
-            ? structuredClone(initialValue)
-            : initialValue;
-        set(deepSet(get(), segments, valueToRestore), true);
-      };
-
-      augmentedApi.usePath = (path: string, defaultValue?: unknown): any => {
-        const stableDefault = useDeepCompareMemo(defaultValue);
-
-        const segments = useMemo(() => parsePath(path), [path]);
-
-        const selector = useCallback(
-          (state: any) => {
-            const raw = deepGet(state, segments);
-            if (
-              (raw === null || raw === undefined) &&
-              stableDefault !== undefined
-            ) {
-              return stableDefault;
-            }
-            return raw;
-          },
-          [segments, stableDefault]
-        );
-
-        const value = useStore(api as any, selector);
-
-        const setter = useCallback(
-          (updater: unknown) => {
-            set(deepSet(get(), segments, updater), true);
-          },
-          [segments]
-        );
-
-        return [value, setter];
-      };
-
-      return initialState;
+    augmentedApi.getPath = (path: string, defaultValue?: unknown): any => {
+      const raw = deepGet(get(), parsePath(path));
+      if ((raw === null || raw === undefined) && defaultValue !== undefined) {
+        return defaultValue;
+      }
+      return raw;
     };
+
+    augmentedApi.setPath = (path: string, valueOrUpdater: unknown) => {
+      set(deepSet(get(), parsePath(path), valueOrUpdater), true);
+    };
+
+    augmentedApi.resetPath = (path: string) => {
+      const segments = parsePath(path);
+      const initialValue = deepGet(initialSnapshot, segments);
+      const valueToRestore =
+        initialValue && typeof initialValue === 'object'
+          ? structuredClone(initialValue)
+          : initialValue;
+      set(deepSet(get(), segments, valueToRestore), true);
+    };
+
+    augmentedApi.usePath = (path: string, defaultValue?: unknown): any => {
+      const stableDefault = useDeepCompareMemo(defaultValue);
+
+      const segments = useMemo(() => parsePath(path), [path]);
+
+      const selector = useCallback(
+        (state: any) => {
+          const raw = deepGet(state, segments);
+          if (
+            (raw === null || raw === undefined) &&
+            stableDefault !== undefined
+          ) {
+            return stableDefault;
+          }
+          return raw;
+        },
+        [segments, stableDefault]
+      );
+
+      const value = useStore(api as any, selector);
+
+      const setter = useCallback(
+        (updater: unknown) => {
+          set(deepSet(get(), segments, updater), true);
+        },
+        [segments]
+      );
+
+      return [value, setter];
+    };
+
+    return initialState;
+  };
 
 /**
  * Zustand middleware that adds deep dot-path access to your store.
