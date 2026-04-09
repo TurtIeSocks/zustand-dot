@@ -162,5 +162,10 @@ type _A4 = Get<AppState, 'ui.sidebar.open'>;
 
 // Force evaluation — prevents dead-code elimination by the checker
 type _Assert<T extends string> = T;
-type _Use = _Assert<_F1> | _Assert<_N1> | _Assert<_W1> | _Assert<_R1> | _Assert<_A1>;
+type _Use =
+  | _Assert<_F1>
+  | _Assert<_N1>
+  | _Assert<_W1>
+  | _Assert<_R1>
+  | _Assert<_A1>;
 type _UseGet = _F2 | _F3 | _N2 | _N3 | _W2 | _W3 | _R2 | _R3 | _A2 | _A3 | _A4;

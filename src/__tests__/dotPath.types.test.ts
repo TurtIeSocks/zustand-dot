@@ -194,9 +194,7 @@ describe('Recursive type: Paths generation', () => {
     expectTypeOf<'tree'>().toExtend<Paths<RecursiveState>>();
     expectTypeOf<'tree.value'>().toExtend<Paths<RecursiveState>>();
     expectTypeOf<'tree.children'>().toExtend<Paths<RecursiveState>>();
-    expectTypeOf<`tree.children.${number}`>().toExtend<
-      Paths<RecursiveState>
-    >();
+    expectTypeOf<`tree.children.${number}`>().toExtend<Paths<RecursiveState>>();
     expectTypeOf<`tree.children.${number}.value`>().toExtend<
       Paths<RecursiveState>
     >();
@@ -222,9 +220,7 @@ describe('Recursive type: Paths generation', () => {
     expectTypeOf<'fs.name'>().toExtend<Paths<RecursiveState>>();
     expectTypeOf<'fs.files'>().toExtend<Paths<RecursiveState>>();
     expectTypeOf<`fs.files.${number}`>().toExtend<Paths<RecursiveState>>();
-    expectTypeOf<`fs.files.${number}.name`>().toExtend<
-      Paths<RecursiveState>
-    >();
+    expectTypeOf<`fs.files.${number}.name`>().toExtend<Paths<RecursiveState>>();
     expectTypeOf<`fs.files.${number}.parent`>().toExtend<
       Paths<RecursiveState>
     >();
