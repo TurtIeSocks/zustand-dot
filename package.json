@@ -47,7 +47,10 @@
     "prepare": "husky install",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typeperf": "node scripts/typeperf.mjs",
+    "typeperf:save": "node scripts/typeperf.mjs --save",
+    "typeperf:clear": "node scripts/typeperf.mjs --clear"
   },
   "config": {
     "commitizen": {
