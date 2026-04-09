@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef } from 'react';
-import type { Get, Paths } from 'type-fest';
 import {
   type StateCreator,
   type StoreApi,
@@ -11,8 +10,79 @@ import {
 // 1. Type Utilities
 // ==========================================
 
-export type ToString<T> = T extends string | number ? `${T}` : never;
-export type { Get, Paths };
+/** Types that terminate path traversal — no further nesting possible. */
+type _Leaf =
+  | string
+  | number
+  | boolean
+  | bigint
+  | symbol
+  | null
+  | undefined
+  | ((...args: never[]) => unknown)
+  | Date
+  | RegExp
+  | Map<unknown, unknown>
+  | Set<unknown>
+  | Promise<unknown>;
+
+/**
+ * Joins two path segments with `.`, short-circuiting to `never` when Tail
+ * is empty. The `[T] extends [never]` wrapper prevents distribution and
+ * avoids evaluating the template literal when there are no sub-paths.
+ */
+type _Join<H extends string, T> = [T] extends [never]
+  ? never
+  : `${H}.${T & string}`;
+
+/**
+ * Generates a union of all valid dot-notation paths for type T.
+ *
+ * Performance vs type-fest:
+ * - Tuple-length depth counter (`_D['length'] extends N`) — O(1) per level
+ *   vs type-fest's recursive `GreaterThan`/`Sum` which are O(n) each.
+ * - Zero options threading — no `bracketNotation`, `leavesOnly`, or `depth`
+ *   branches evaluated at every recursive step.
+ * - Mapped-type iteration with `keyof T & string` intersection computed once.
+ */
+export type Paths<T, _D extends 0[] = []> = _D['length'] extends 8
+  ? never
+  : T extends _Leaf
+    ? never
+    : T extends readonly unknown[]
+      ?
+          | `${number}`
+          | _Join<`${number}`, Paths<NonNullable<T[number]>, [..._D, 0]>>
+      : T extends object
+        ? {
+            [K in keyof T & string]:
+              | K
+              | _Join<K, Paths<NonNullable<T[K]>, [..._D, 0]>>;
+          }[keyof T & string]
+        : never;
+
+/**
+ * Resolves the value type at a dot-notation path P within T.
+ *
+ * Performance vs type-fest:
+ * - Tail-recursive conditional type — eligible for TypeScript's TCO (4.5+).
+ * - Direct `infer` template-literal splitting — no intermediate `ToPath`,
+ *   `Split`, or `FixPathSquareBrackets` pipeline.
+ * - No `PropertyOf`/`StrictPropertyOf`/`Strictify`/`WithStringKeys` layers.
+ * - Nullable intermediates (T[H] = Foo | null) distribute naturally through
+ *   the conditional, collapsing to `never` for non-object branches.
+ */
+export type Get<T, P extends string> = P extends `${infer H}.${infer R}`
+  ? H extends keyof T
+    ? Get<T[H], R>
+    : T extends readonly unknown[]
+      ? Get<T[number], R>
+      : never
+  : P extends keyof T
+    ? T[P]
+    : T extends readonly unknown[]
+      ? T[number]
+      : never;
 
 // ==========================================
 // 2. Runtime Utilities
@@ -215,36 +285,20 @@ function useDeepCompareMemo<T>(value: T): T {
  * Provides deep dot-path access for getting, setting, subscribing to, and resetting nested state.
  */
 export interface StoreWithPaths<T> {
-  usePath: <
-    P extends Paths<T>,
-    D extends Get<T, ToString<P>> | undefined = undefined,
-  >(
+  usePath: <P extends Paths<T>, D extends Get<T, P> | undefined = undefined>(
     path: P,
     defaultValue?: D
   ) => [
-    D extends undefined
-      ? Get<T, ToString<P>>
-      : NonNullable<Get<T, ToString<P>>> | D,
-    (
-      valOrUpdater:
-        | Get<T, ToString<P>>
-        | ((prev: Get<T, ToString<P>>) => Get<T, ToString<P>>)
-    ) => void,
+    D extends undefined ? Get<T, P> : NonNullable<Get<T, P>> | D,
+    (valOrUpdater: Get<T, P> | ((prev: Get<T, P>) => Get<T, P>)) => void,
   ];
-  getPath: <
-    P extends Paths<T>,
-    D extends Get<T, ToString<P>> | undefined = undefined,
-  >(
+  getPath: <P extends Paths<T>, D extends Get<T, P> | undefined = undefined>(
     path: P,
     defaultValue?: D
-  ) => D extends undefined
-    ? Get<T, ToString<P>>
-    : NonNullable<Get<T, ToString<P>>> | D;
+  ) => D extends undefined ? Get<T, P> : NonNullable<Get<T, P>> | D;
   setPath: <P extends Paths<T>>(
     path: P,
-    valueOrUpdater:
-      | Get<T, ToString<P>>
-      | ((prev: Get<T, ToString<P>>) => Get<T, ToString<P>>)
+    valueOrUpdater: Get<T, P> | ((prev: Get<T, P>) => Get<T, P>)
   ) => void;
   resetPath: (path: Paths<T>) => void;
 }
