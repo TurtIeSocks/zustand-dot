@@ -15,25 +15,25 @@ interface TestState {
 
 describe('DotPath type', () => {
   it('generates top-level paths', () => {
-    expectTypeOf<'user'>().toMatchTypeOf<Paths<TestState>>();
-    expectTypeOf<'items'>().toMatchTypeOf<Paths<TestState>>();
-    expectTypeOf<'count'>().toMatchTypeOf<Paths<TestState>>();
+    expectTypeOf<'user'>().toExtend<Paths<TestState>>();
+    expectTypeOf<'items'>().toExtend<Paths<TestState>>();
+    expectTypeOf<'count'>().toExtend<Paths<TestState>>();
   });
 
   it('generates nested paths', () => {
-    expectTypeOf<'user.name'>().toMatchTypeOf<Paths<TestState>>();
-    expectTypeOf<'user.age'>().toMatchTypeOf<Paths<TestState>>();
-    expectTypeOf<'user.tags'>().toMatchTypeOf<Paths<TestState>>();
+    expectTypeOf<'user.name'>().toExtend<Paths<TestState>>();
+    expectTypeOf<'user.age'>().toExtend<Paths<TestState>>();
+    expectTypeOf<'user.tags'>().toExtend<Paths<TestState>>();
   });
 
   it('generates array element paths', () => {
-    expectTypeOf<`items.${number}`>().toMatchTypeOf<Paths<TestState>>();
-    expectTypeOf<`items.${number}.id`>().toMatchTypeOf<Paths<TestState>>();
-    expectTypeOf<`items.${number}.title`>().toMatchTypeOf<Paths<TestState>>();
+    expectTypeOf<`items.${number}`>().toExtend<Paths<TestState>>();
+    expectTypeOf<`items.${number}.id`>().toExtend<Paths<TestState>>();
+    expectTypeOf<`items.${number}.title`>().toExtend<Paths<TestState>>();
   });
 
   it('includes optional properties', () => {
-    expectTypeOf<'optional'>().toMatchTypeOf<Paths<TestState>>();
+    expectTypeOf<'optional'>().toExtend<Paths<TestState>>();
   });
 });
 
@@ -191,44 +191,44 @@ interface RecursiveState {
 
 describe('Recursive type: Paths generation', () => {
   it('generates paths for self-referencing tree nodes', () => {
-    expectTypeOf<'tree'>().toMatchTypeOf<Paths<RecursiveState>>();
-    expectTypeOf<'tree.value'>().toMatchTypeOf<Paths<RecursiveState>>();
-    expectTypeOf<'tree.children'>().toMatchTypeOf<Paths<RecursiveState>>();
-    expectTypeOf<`tree.children.${number}`>().toMatchTypeOf<
+    expectTypeOf<'tree'>().toExtend<Paths<RecursiveState>>();
+    expectTypeOf<'tree.value'>().toExtend<Paths<RecursiveState>>();
+    expectTypeOf<'tree.children'>().toExtend<Paths<RecursiveState>>();
+    expectTypeOf<`tree.children.${number}`>().toExtend<
       Paths<RecursiveState>
     >();
-    expectTypeOf<`tree.children.${number}.value`>().toMatchTypeOf<
+    expectTypeOf<`tree.children.${number}.value`>().toExtend<
       Paths<RecursiveState>
     >();
-    expectTypeOf<`tree.children.${number}.children`>().toMatchTypeOf<
+    expectTypeOf<`tree.children.${number}.children`>().toExtend<
       Paths<RecursiveState>
     >();
   });
 
   it('generates paths for nullable linked list', () => {
-    expectTypeOf<'list'>().toMatchTypeOf<Paths<RecursiveState>>();
-    expectTypeOf<'list.data'>().toMatchTypeOf<Paths<RecursiveState>>();
-    expectTypeOf<'list.next'>().toMatchTypeOf<Paths<RecursiveState>>();
-    expectTypeOf<'list.next.data'>().toMatchTypeOf<Paths<RecursiveState>>();
-    expectTypeOf<'list.next.next'>().toMatchTypeOf<Paths<RecursiveState>>();
+    expectTypeOf<'list'>().toExtend<Paths<RecursiveState>>();
+    expectTypeOf<'list.data'>().toExtend<Paths<RecursiveState>>();
+    expectTypeOf<'list.next'>().toExtend<Paths<RecursiveState>>();
+    expectTypeOf<'list.next.data'>().toExtend<Paths<RecursiveState>>();
+    expectTypeOf<'list.next.next'>().toExtend<Paths<RecursiveState>>();
   });
 
   it('generates paths for JSON-like recursive unions', () => {
-    expectTypeOf<'json'>().toMatchTypeOf<Paths<RecursiveState>>();
+    expectTypeOf<'json'>().toExtend<Paths<RecursiveState>>();
   });
 
   it('generates paths for mutually recursive types', () => {
-    expectTypeOf<'fs'>().toMatchTypeOf<Paths<RecursiveState>>();
-    expectTypeOf<'fs.name'>().toMatchTypeOf<Paths<RecursiveState>>();
-    expectTypeOf<'fs.files'>().toMatchTypeOf<Paths<RecursiveState>>();
-    expectTypeOf<`fs.files.${number}`>().toMatchTypeOf<Paths<RecursiveState>>();
-    expectTypeOf<`fs.files.${number}.name`>().toMatchTypeOf<
+    expectTypeOf<'fs'>().toExtend<Paths<RecursiveState>>();
+    expectTypeOf<'fs.name'>().toExtend<Paths<RecursiveState>>();
+    expectTypeOf<'fs.files'>().toExtend<Paths<RecursiveState>>();
+    expectTypeOf<`fs.files.${number}`>().toExtend<Paths<RecursiveState>>();
+    expectTypeOf<`fs.files.${number}.name`>().toExtend<
       Paths<RecursiveState>
     >();
-    expectTypeOf<`fs.files.${number}.parent`>().toMatchTypeOf<
+    expectTypeOf<`fs.files.${number}.parent`>().toExtend<
       Paths<RecursiveState>
     >();
-    expectTypeOf<`fs.files.${number}.parent.name`>().toMatchTypeOf<
+    expectTypeOf<`fs.files.${number}.parent.name`>().toExtend<
       Paths<RecursiveState>
     >();
   });
