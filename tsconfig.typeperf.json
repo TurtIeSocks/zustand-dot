@@ -1,4 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "include": ["src/index.ts", "src/__bench__/type-perf.bench.ts"]
-}
