@@ -7,7 +7,6 @@ A typesafe, reactive middleware for [Zustand](https://github.com/pmndrs/zustand)
 - 🎯 **Deep Access**: Get, set, and subscribe to deeply nested values using dot path strings (e.g., `user.posts.0.title`).
 - 🛡️ **Fully Typesafe**: Paths and return values are strictly inferred. Invalid paths throw compile-time errors.
 - ⚡ **Reactive Hook**: `usePath` subscribes _only_ to the specific path you request.
-- 🧘 **Stable Defaults**: `usePath` memoizes default values deeply, preventing unnecessary re-renders when passing objects/arrays as defaults.
 - 🔄 **Immutable Updates**: `setPath` performs structural sharing, updating only what changed.
 - 🔢 **Array Support**: seamless array access via dot notation (`items.0`) or brackets (`items[0]`).
 
@@ -133,7 +132,19 @@ useStore.setPath('user.profile.name', 123)
 
 The runtime parser also accepts brackets (`items[0].id`) and quoted keys (`config["remote.url"]`), but `Paths<T>` only generates dot notation, so the typed API rejects those forms. Use them with a cast when a key contains a literal dot.
 
-Path enumeration comes from [`dot.paths`](https://github.com/TurtIeSocks/dot.paths) and stops at 8 levels by default. Deeper values stay reachable at runtime.
+### Path Depth
+
+Path enumeration comes from [`dot.paths`](https://github.com/TurtIeSocks/dot.paths) and stops at 8 levels by default. Raise the cap (up to 16) by passing options to the middleware:
+
+```typescript
+const useStore = create<State>()(
+  dotPath((set) => ({ ... }), { depth: 12 })
+)
+```
+
+### Exported Types
+
+`Paths`, `Get`, `GetStrict`, and `PathsOptions` are re-exported from `dot.paths` under their original names. `Get` resolves any string path and yields `never` on a miss; `GetStrict` additionally rejects invalid paths at compile time.
 
 ## Performance
 

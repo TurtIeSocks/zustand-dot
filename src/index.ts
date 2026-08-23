@@ -1,4 +1,4 @@
-import type { GetStrict, Paths } from 'dot.paths';
+import type { Get, Paths, PathsOptions } from 'dot.paths';
 import { useCallback, useMemo, useRef } from 'react';
 import {
   type StateCreator,
@@ -12,9 +12,10 @@ import {
 // ==========================================
 
 // `Paths`/`Get`/`GetStrict`/`PathsOptions` come from the standalone `dot.paths`
-// package (extracted from this repo). Re-exported here to preserve the public
-// API and surface the strict + options variants.
-export type { GetStrict as Get, Paths, PathsOptions } from 'dot.paths';
+// package (extracted from this repo), re-exported under their upstream names:
+// `Get` is the loose resolver (any string path), `GetStrict` constrains the
+// path to `Paths<T>` for autocomplete and invalid-path rejection.
+export type { Get, GetStrict, Paths, PathsOptions } from 'dot.paths';
 
 // ==========================================
 // 2. Runtime Utilities
@@ -309,58 +310,57 @@ function useDeepCompareMemo<T>(value: T): T {
 /**
  * Methods added to a Zustand store by the `dotPath` middleware.
  * Provides deep dot-path access for getting, setting, subscribing to, and resetting nested state.
+ *
+ * `O` carries the `PathsOptions` given to `dotPath` (e.g. `{ depth: 12 }`)
+ * into path enumeration. Value resolution uses the loose `Get`, which works
+ * at any depth once the path has passed the `Paths<T, O>` constraint.
  */
-export interface StoreWithPaths<T> {
-  usePath: <
-    P extends Paths<T>,
-    D extends GetStrict<T, P> | undefined = undefined,
-  >(
+export interface StoreWithPaths<T, O extends PathsOptions = {}> {
+  usePath: <P extends Paths<T, O>, D extends Get<T, P> | undefined = undefined>(
     path: P,
     defaultValue?: D
   ) => [
-    D extends undefined ? GetStrict<T, P> : NonNullable<GetStrict<T, P>> | D,
-    (
-      valOrUpdater:
-        | GetStrict<T, P>
-        | ((prev: GetStrict<T, P>) => GetStrict<T, P>)
-    ) => void,
+    D extends undefined ? Get<T, P> : NonNullable<Get<T, P>> | D,
+    (valOrUpdater: Get<T, P> | ((prev: Get<T, P>) => Get<T, P>)) => void,
   ];
-  getPath: <
-    P extends Paths<T>,
-    D extends GetStrict<T, P> | undefined = undefined,
-  >(
+  getPath: <P extends Paths<T, O>, D extends Get<T, P> | undefined = undefined>(
     path: P,
     defaultValue?: D
-  ) => D extends undefined ? GetStrict<T, P> : NonNullable<GetStrict<T, P>> | D;
-  setPath: <P extends Paths<T>>(
+  ) => D extends undefined ? Get<T, P> : NonNullable<Get<T, P>> | D;
+  setPath: <P extends Paths<T, O>>(
     path: P,
-    valueOrUpdater:
-      | GetStrict<T, P>
-      | ((prev: GetStrict<T, P>) => GetStrict<T, P>)
+    valueOrUpdater: Get<T, P> | ((prev: Get<T, P>) => Get<T, P>)
   ) => void;
-  resetPath: (path: Paths<T>) => void;
+  resetPath: (path: Paths<T, O>) => void;
 }
 
 // Type for the middleware configuration
 type DotPathMiddleware = <
   T,
+  O extends PathsOptions = {},
   Mps extends [StoreMutatorIdentifier, unknown][] = [],
   Mcs extends [StoreMutatorIdentifier, unknown][] = [],
 >(
-  initializer: StateCreator<T, [...Mps, ['dotPath', unknown]], Mcs>
-) => StateCreator<T, Mps, [['dotPath', unknown], ...Mcs]>;
+  initializer: StateCreator<T, [...Mps, ['dotPath', O]], Mcs>,
+  options?: O
+) => StateCreator<T, Mps, [['dotPath', O], ...Mcs]>;
 
 type ExtractState<S> = S extends { getState: () => infer T } ? T : never;
 type Write<T, U> = Omit<T, keyof U> & U;
 
 declare module 'zustand/vanilla' {
   interface StoreMutators<S, A> {
-    dotPath: Write<S, StoreWithPaths<ExtractState<S>>>;
+    dotPath: Write<
+      S,
+      StoreWithPaths<ExtractState<S>, A extends PathsOptions ? A : {}>
+    >;
   }
 }
 
 const dotPathImpl =
-  (config: StateCreator<any, any, any>) =>
+  // The options argument only carries PathsOptions at the type level; the
+  // runtime never reads it.
+  (config: StateCreator<any, any, any>, _options?: unknown) =>
   (
     set: StoreApi<any>['setState'],
     get: StoreApi<any>['getState'],
