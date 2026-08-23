@@ -76,6 +76,38 @@ describe('stores with action functions in state', () => {
     expect(store.getPath('user.name')).toBe('Alice');
     expect(store.getState().user.greet()).toBe('hi');
   });
+
+  it('supports circular references in initial state', () => {
+    interface Node {
+      name: string;
+      self?: Node;
+    }
+    const node: Node = { name: 'root' };
+    node.self = node;
+    const store = createStore<{ node: Node }>()(dotPath(() => ({ node })));
+    store.setPath('node.name', 'changed');
+    store.resetPath('node.name');
+    expect(store.getPath('node.name')).toBe('root');
+  });
+});
+
+describe('resetPath for paths absent from initial state', () => {
+  it('removes an object key that was not initially set', () => {
+    const store = createTestStore();
+    store.setPath('nullable', 'later');
+    expect('nullable' in store.getState()).toBe(true);
+    store.resetPath('nullable');
+    expect('nullable' in store.getState()).toBe(false);
+    expect(store.getPath('nullable')).toBeUndefined();
+  });
+
+  it('removes an array element that was not initially present', () => {
+    const store = createTestStore();
+    store.setPath('items.2' as 'items.0', { id: 3, title: 'Third' });
+    expect(store.getState().items).toHaveLength(3);
+    store.resetPath('items.2' as 'items.0');
+    expect(store.getState().items).toHaveLength(2);
+  });
 });
 
 describe('getPath', () => {
@@ -214,11 +246,40 @@ describe('resetPath', () => {
 });
 
 describe('path parsing edge cases', () => {
-  it('handles bracket notation for array indices', () => {
+  it('handles bracket notation for array indices at runtime', () => {
     const store = createTestStore();
-    // bracket notation access via setPath/getPath
-    store.setPath('items.0.title' as 'items.0.title', 'Bracket Test');
-    expect(store.getPath('items.0.title')).toBe('Bracket Test');
+    // Paths<T> only emits dot notation, so bracket syntax needs a cast —
+    // this exercises the runtime bracket parser with a real bracket string.
+    store.setPath('items[0].title' as unknown as 'items.0.title', 'Bracket');
+    expect(store.getPath('items[0].title' as unknown as 'items.0.title')).toBe(
+      'Bracket'
+    );
+    expect(store.getPath('items.0.title')).toBe('Bracket');
+  });
+
+  it('handles quoted keys containing dots at runtime', () => {
+    interface QuotedState {
+      config: Record<string, string>;
+    }
+    const store = createStore<QuotedState>()(
+      dotPath((): QuotedState => ({ config: { 'remote.url': 'origin' } }))
+    );
+    expect(
+      store.getPath('config["remote.url"]' as unknown as `config.${string}`)
+    ).toBe('origin');
+  });
+
+  it('rejects __proto__ path segments', () => {
+    const store = createTestStore();
+    expect(() =>
+      store.setPath(
+        'user.__proto__' as unknown as 'user.name',
+        'polluted' as never
+      )
+    ).toThrow(/__proto__/);
+    expect(() =>
+      store.getPath('user.__proto__.x' as unknown as 'user.name')
+    ).toThrow(/__proto__/);
   });
 
   it('handles multiple levels of nesting', () => {

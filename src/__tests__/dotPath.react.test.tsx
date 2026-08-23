@@ -63,6 +63,35 @@ describe('usePath hook', () => {
     expect(result.current[0]).toBe('fallback');
   });
 
+  it('returns default value when path is null', () => {
+    const useStore = create<{ val: string | null }>()(
+      dotPath((): { val: string | null } => ({ val: null }))
+    );
+    const { result } = renderHook(() => useStore.usePath('val', 'fallback'));
+    expect(result.current[0]).toBe('fallback');
+  });
+
+  it('does not re-render when an unrelated sibling path changes', () => {
+    const useStore = createTestStore();
+    let renderCount = 0;
+
+    const { result } = renderHook(() => {
+      renderCount++;
+      return useStore.usePath('user.name');
+    });
+
+    expect(renderCount).toBe(1);
+
+    act(() => {
+      useStore.setPath('count', 41);
+      useStore.setPath('items.0.title', 'Changed');
+      useStore.setState({ count: 42 });
+    });
+
+    expect(renderCount).toBe(1);
+    expect(result.current[0]).toBe('Alice');
+  });
+
   it('provides stable setter reference across renders', () => {
     const useStore = createTestStore();
     const { result, rerender } = renderHook(() =>

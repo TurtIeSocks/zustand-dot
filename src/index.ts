@@ -30,6 +30,12 @@ const BRACKET_PATH_RE = /[^.[\]"']+|\["([^"]*)"\]|\['([^']*)'\]/g;
 const pathCache = new Map<string, string[]>();
 
 /**
+ * Cap on cached parsed paths. Static paths never come close; the cap only
+ * bounds memory when callers build paths dynamically (`items.${id}.name`).
+ */
+const PATH_CACHE_MAX = 10_000;
+
+/**
  * Parses a path string into an array of segments. Results are cached.
  *
  * Fast-path: paths without brackets or quotes use `String.split('.')`.
@@ -67,6 +73,15 @@ const parsePath = (path: string): string[] => {
     }
   }
 
+  // Writing through a `__proto__` segment would hit the legacy accessor and
+  // replace the target object's prototype instead of setting a plain key.
+  if (segments.includes('__proto__')) {
+    throw new Error(
+      `zustand-dot: refusing to use path segment "__proto__" in "${path}"`
+    );
+  }
+
+  if (pathCache.size >= PATH_CACHE_MAX) pathCache.clear();
   pathCache.set(path, segments);
   return segments;
 };
@@ -86,6 +101,13 @@ const deepGet = (obj: unknown, pathSegments: string[]): unknown => {
 
 /** Matches strings that are purely numeric (array indices). */
 const NUMERIC_RE = /^\d+$/;
+
+/**
+ * Internal sentinel: makes deepSet remove the leaf key (or splice the array
+ * index) instead of assigning. Used by resetPath when a path did not exist
+ * in the initial state — assigning `undefined` would create an own key.
+ */
+const DELETE = Symbol('zustand-dot.delete');
 
 /**
  * Immutable deep set — iterative, zero-recursion.
@@ -127,10 +149,19 @@ const deepSet = (
   // Phase 2: Apply value at the leaf
   // `current` now holds the original value at the leaf path
   const leaf = stack[len - 1] as Record<string, unknown>;
-  leaf[segments[len - 1]] =
-    typeof valueOrUpdater === 'function'
-      ? (valueOrUpdater as (prev: unknown) => unknown)(current)
-      : valueOrUpdater;
+  const leafKey = segments[len - 1];
+  if (valueOrUpdater === DELETE) {
+    if (Array.isArray(leaf)) {
+      leaf.splice(Number(leafKey), 1);
+    } else {
+      delete leaf[leafKey];
+    }
+  } else {
+    leaf[leafKey] =
+      typeof valueOrUpdater === 'function'
+        ? (valueOrUpdater as (prev: unknown) => unknown)(current)
+        : valueOrUpdater;
+  }
 
   // Phase 3: Link clones bottom-up
   for (let i = len - 2; i >= 0; i--) {
@@ -146,25 +177,34 @@ const deepSet = (
  * `structuredClone` throws on functions, so it cannot snapshot the common
  * Zustand shape of state + action functions. This clone copies plain
  * objects, arrays, Date, Map, and Set; everything else (functions, class
- * instances, primitives) passes through by reference.
+ * instances, primitives) passes through by reference. Circular references
+ * are preserved via the `seen` map.
  */
-const snapshot = <T>(value: T): T => {
+const snapshotWith = <T>(value: T, seen: WeakMap<object, unknown>): T => {
   if (value === null || typeof value !== 'object') return value;
 
+  const existing = seen.get(value);
+  if (existing !== undefined) return existing as T;
+
   if (Array.isArray(value)) {
-    return value.map(snapshot) as unknown as T;
+    const out: unknown[] = [];
+    seen.set(value, out);
+    for (const v of value) out.push(snapshotWith(v, seen));
+    return out as unknown as T;
   }
   if (value instanceof Date) {
     return new Date(value.getTime()) as unknown as T;
   }
   if (value instanceof Map) {
     const out = new Map();
-    for (const [k, v] of value) out.set(k, snapshot(v));
+    seen.set(value, out);
+    for (const [k, v] of value) out.set(k, snapshotWith(v, seen));
     return out as unknown as T;
   }
   if (value instanceof Set) {
     const out = new Set();
-    for (const v of value) out.add(snapshot(v));
+    seen.set(value, out);
+    for (const v of value) out.add(snapshotWith(v, seen));
     return out as unknown as T;
   }
 
@@ -174,11 +214,14 @@ const snapshot = <T>(value: T): T => {
   if (proto !== Object.prototype && proto !== null) return value;
 
   const out: Record<string, unknown> = {};
+  seen.set(value, out);
   for (const key of Object.keys(value)) {
-    out[key] = snapshot((value as Record<string, unknown>)[key]);
+    out[key] = snapshotWith((value as Record<string, unknown>)[key], seen);
   }
   return out as T;
 };
+
+const snapshot = <T>(value: T): T => snapshotWith(value, new WeakMap());
 
 /**
  * Deep equality check for memoization.
@@ -198,6 +241,17 @@ const deepEqual = (a: unknown, b: unknown): boolean => {
   }
 
   if (Array.isArray(a) !== Array.isArray(b)) return false;
+
+  // Maps and Sets are reference-equal only (handled by Object.is above);
+  // comparing them as plain objects would see zero keys and report equal.
+  if (
+    a instanceof Map ||
+    b instanceof Map ||
+    a instanceof Set ||
+    b instanceof Set
+  ) {
+    return false;
+  }
 
   if (a instanceof Date && b instanceof Date) {
     return a.getTime() === b.getTime();
@@ -333,7 +387,11 @@ const dotPathImpl =
     augmentedApi.resetPath = (path: string) => {
       const segments = parsePath(path);
       const initialValue = deepGet(initialSnapshot, segments);
-      set(deepSet(get(), segments, snapshot(initialValue)), true);
+      // A path absent from the initial state is removed rather than set to
+      // `undefined`, so reset restores "was never set" faithfully.
+      const valueToRestore =
+        initialValue === undefined ? DELETE : snapshot(initialValue);
+      set(deepSet(get(), segments, valueToRestore), true);
     };
 
     augmentedApi.usePath = (path: string, defaultValue?: unknown): any => {
