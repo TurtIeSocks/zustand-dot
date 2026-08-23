@@ -206,6 +206,28 @@ describe('configurable path depth', () => {
   });
 });
 
+describe('subscribePath types', () => {
+  it('infers value and previous value from the path', () => {
+    const store = createStore<TestState>()(
+      dotPath(
+        (): TestState => ({
+          user: { name: 'Alice', age: 30, tags: [] },
+          items: [],
+          count: 0,
+        })
+      )
+    );
+
+    store.subscribePath('user.name', (value, previousValue) => {
+      expectTypeOf(value).toEqualTypeOf<string>();
+      expectTypeOf(previousValue).toEqualTypeOf<string>();
+    });
+
+    const unsubscribe = store.subscribePath('count', () => {});
+    expectTypeOf(unsubscribe).toEqualTypeOf<() => void>();
+  });
+});
+
 // ==========================================
 // Recursive Types
 // ==========================================

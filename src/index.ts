@@ -332,6 +332,10 @@ export interface StoreWithPaths<T, O extends PathsOptions = {}> {
     valueOrUpdater: Get<T, P> | ((prev: Get<T, P>) => Get<T, P>)
   ) => void;
   resetPath: (path: Paths<T, O>) => void;
+  subscribePath: <P extends Paths<T, O>>(
+    path: P,
+    listener: (value: Get<T, P>, previousValue: Get<T, P>) => void
+  ) => () => void;
 }
 
 // Type for the middleware configuration
@@ -392,6 +396,22 @@ const dotPathImpl =
       const valueToRestore =
         initialValue === undefined ? DELETE : snapshot(initialValue);
       set(deepSet(get(), segments, valueToRestore), true);
+    };
+
+    augmentedApi.subscribePath = (
+      path: string,
+      listener: (value: any, previousValue: any) => void
+    ) => {
+      const segments = parsePath(path);
+      return api.subscribe((state, previousState) => {
+        const value = deepGet(state, segments);
+        const previousValue = deepGet(previousState, segments);
+        // Structural sharing makes Object.is exact: an untouched subtree
+        // keeps its reference, so only real changes fire the listener.
+        if (!Object.is(value, previousValue)) {
+          listener(value, previousValue);
+        }
+      });
     };
 
     augmentedApi.usePath = (path: string, defaultValue?: unknown): any => {

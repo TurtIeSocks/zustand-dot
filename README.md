@@ -7,6 +7,8 @@ A typesafe, reactive middleware for [Zustand](https://github.com/pmndrs/zustand)
 - 🎯 **Deep Access**: Get, set, and subscribe to deeply nested values using dot path strings (e.g., `user.posts.0.title`).
 - 🛡️ **Fully Typesafe**: Paths and return values are strictly inferred. Invalid paths throw compile-time errors.
 - ⚡ **Reactive Hook**: `usePath` subscribes _only_ to the specific path you request.
+- 🔔 **Vanilla Subscriptions**: `subscribePath` runs a listener whenever a specific path changes, with or without React.
+- 🧘 **Stable Defaults**: `usePath` memoizes default values deeply, preventing unnecessary re-renders when passing objects/arrays as defaults.
 - 🔄 **Immutable Updates**: `setPath` performs structural sharing, updating only what changed.
 - 🔢 **Array Support**: seamless array access via dot notation (`items.0`) or brackets (`items[0]`).
 
@@ -109,6 +111,19 @@ useStore.resetPath('user.profile')
 ```
 
 Action functions stored in state are snapshotted by reference, so resetting a subtree that contains actions keeps them callable. Resetting a path that was absent from the initial state removes the key instead of leaving `undefined` behind.
+
+### `subscribePath(path, listener)`
+
+Subscribe to a path outside React. The listener receives the new and previous values, and only fires when the value at that path actually changes.
+
+```typescript
+const unsubscribe = useStore.subscribePath('user.profile.name', (name, prev) => {
+  console.log(`${prev} renamed to ${name}`)
+})
+
+// Later
+unsubscribe()
+```
 
 ## TypeScript Support
 

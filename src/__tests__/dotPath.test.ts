@@ -289,6 +289,62 @@ describe('path parsing edge cases', () => {
   });
 });
 
+describe('subscribePath', () => {
+  it('fires the listener when the value at the path changes', () => {
+    const store = createTestStore();
+    const calls: Array<[unknown, unknown]> = [];
+    store.subscribePath('user.name', (value, previousValue) => {
+      calls.push([value, previousValue]);
+    });
+    store.setPath('user.name', 'Bob');
+    expect(calls).toEqual([['Bob', 'Alice']]);
+  });
+
+  it('does not fire for unrelated path changes', () => {
+    const store = createTestStore();
+    let calls = 0;
+    store.subscribePath('user.name', () => {
+      calls++;
+    });
+    store.setPath('count', 1);
+    store.setPath('items.0.title', 'Changed');
+    store.setState({ count: 2 });
+    expect(calls).toBe(0);
+  });
+
+  it('fires for parent-path subscriptions when a child changes', () => {
+    const store = createTestStore();
+    let calls = 0;
+    store.subscribePath('user', () => {
+      calls++;
+    });
+    store.setPath('user.name', 'Bob');
+    expect(calls).toBe(1);
+  });
+
+  it('returns an unsubscribe function', () => {
+    const store = createTestStore();
+    let calls = 0;
+    const unsubscribe = store.subscribePath('count', () => {
+      calls++;
+    });
+    store.setPath('count', 1);
+    unsubscribe();
+    store.setPath('count', 2);
+    expect(calls).toBe(1);
+  });
+
+  it('fires on setState changes too', () => {
+    const store = createTestStore();
+    const values: unknown[] = [];
+    store.subscribePath('count', (value) => {
+      values.push(value);
+    });
+    store.setState({ count: 7 });
+    expect(values).toEqual([7]);
+  });
+});
+
 describe('middleware composition', () => {
   it('works as a standard zustand store', () => {
     const store = createTestStore();
