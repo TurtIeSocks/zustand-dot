@@ -71,6 +71,8 @@ const [posts, setPosts] = useStore.usePath('user.posts', [])
   - `defaultValue`: (optional) - Value to return if the path resolves to `null` or `undefined`.
 - **Returns**: `[value, setter]` tuple.
 
+Object and array defaults are compared deeply on every render, so hoist large defaults to a module constant.
+
 ### `setPath(path, valueOrUpdater)`
 
 Updates a value deeply, creating nested objects/arrays if they don't exist.
@@ -107,6 +109,8 @@ Resets a specific path (subtree) back to its _initial state_ captured at store c
 useStore.resetPath('user.profile')
 ```
 
+Action functions stored in state are snapshotted by reference, so resetting a subtree that contains actions keeps them callable. Resetting a path that was absent from the initial state removes the key instead of leaving `undefined` behind.
+
 ## TypeScript Support
 
 The middleware leverages advanced recursive types to provide autocomplete and validation.
@@ -126,8 +130,10 @@ useStore.setPath('user.profile.name', 123)
 
 - Dot notation: `a.b.c`
 - Array indices: `items.0.id`
-- Brackets: `items[0].id`
-- Quoted keys: `config["remote.url"]`
+
+The runtime parser also accepts brackets (`items[0].id`) and quoted keys (`config["remote.url"]`), but `Paths<T>` only generates dot notation, so the typed API rejects those forms. Use them with a cast when a key contains a literal dot.
+
+Path enumeration comes from [`dot.paths`](https://github.com/TurtIeSocks/dot.paths) and stops at 8 levels by default. Deeper values stay reachable at runtime.
 
 ## Performance
 
@@ -136,15 +142,15 @@ All dot-path operations use cached path parsing, iterative deep-set, and closure
 | Operation                  | vs Vanilla       | Absolute (per op) |
 | -------------------------- | ---------------- | ----------------- |
 | Read — shallow             | 1.09x slower     | ~22 ns            |
-| Read — deep (4 levels)     | 1.75x slower     | ~36 ns            |
-| Read — array element       | 1.60x slower     | ~33 ns            |
-| Write — shallow            | **1.10x faster** | ~36 ns            |
-| Write — deep (4 levels)    | 2.52x slower     | ~162 ns           |
-| Write — functional updater | 1.40x slower     | ~61 ns            |
-| Write — array element      | 2.20x slower     | ~144 ns           |
-| Reset — subtree            | 1.09x slower     | ~953 ns           |
+| Read — deep (4 levels)     | 1.92x slower     | ~38 ns            |
+| Read — array element       | 1.75x slower     | ~36 ns            |
+| Write — shallow            | **1.13x faster** | ~36 ns            |
+| Write — deep (4 levels)    | 2.56x slower     | ~161 ns           |
+| Write — functional updater | 1.41x slower     | ~62 ns            |
+| Write — array element      | 2.15x slower     | ~142 ns           |
+| Reset — subtree            | **4.67x faster** | ~197 ns           |
 
-Shallow reads are within 10% of direct property access. Shallow writes are _faster_ than vanilla `setState` because `setPath` uses `replace: true`, skipping Zustand's partial state merge.
+Shallow reads are within 10% of direct property access. Shallow writes are _faster_ than vanilla `setState` because `setPath` uses `replace: true`, skipping Zustand's partial state merge. Resets beat the vanilla pattern because the initial subtree is snapshotted once at store creation and restored from cached path segments.
 
 Run `npm run bench` to reproduce.
 
