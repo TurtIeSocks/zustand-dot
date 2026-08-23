@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import { createStore } from 'zustand/vanilla';
-import { dotPath, type Get, type Paths } from '../index';
+import { dotPath, type Get, type GetStrict, type Paths } from '../index';
 
 interface TestState {
   user: {
@@ -150,6 +150,81 @@ describe('store API types', () => {
     store.resetPath('user');
     store.resetPath('user.name');
     store.resetPath('count');
+  });
+});
+
+describe('Get / GetStrict alignment with dot.paths', () => {
+  it('Get is loose: invalid paths resolve to never instead of erroring', () => {
+    expectTypeOf<Get<TestState, 'nope'>>().toEqualTypeOf<never>();
+    expectTypeOf<Get<TestState, 'user.nope'>>().toEqualTypeOf<never>();
+  });
+
+  it('GetStrict constrains paths and resolves identically for valid ones', () => {
+    expectTypeOf<GetStrict<TestState, 'user.name'>>().toEqualTypeOf<string>();
+    expectTypeOf<GetStrict<TestState, 'count'>>().toEqualTypeOf<number>();
+  });
+});
+
+// ==========================================
+// Depth Options
+// ==========================================
+
+interface DeepState {
+  a: { b: { c: { d: { e: { f: { g: { h: { i: { j: string } } } } } } } } };
+}
+
+const deepInitial = (): DeepState => ({
+  a: { b: { c: { d: { e: { f: { g: { h: { i: { j: 'leaf' } } } } } } } } },
+});
+
+describe('configurable path depth', () => {
+  it('default depth caps enumeration at 8 segments', () => {
+    expectTypeOf<'a.b.c.d.e.f.g.h'>().toExtend<Paths<DeepState>>();
+    expectTypeOf<'a.b.c.d.e.f.g.h.i'>().not.toExtend<Paths<DeepState>>();
+  });
+
+  it('depth option extends enumeration', () => {
+    expectTypeOf<'a.b.c.d.e.f.g.h.i.j'>().toExtend<
+      Paths<DeepState, { depth: 12 }>
+    >();
+  });
+
+  it('store without options rejects paths beyond default depth', () => {
+    const store = createStore<DeepState>()(dotPath(deepInitial));
+    store.setPath('a.b.c.d.e.f.g.h', { i: { j: 'x' } });
+    // @ts-expect-error - path exceeds the default depth of 8
+    store.setPath('a.b.c.d.e.f.g.h.i.j', 'x');
+  });
+
+  it('store with a depth option accepts deeper paths', () => {
+    const store = createStore<DeepState>()(
+      dotPath(deepInitial, { depth: 12 })
+    );
+    store.setPath('a.b.c.d.e.f.g.h.i.j', 'x');
+    const leaf = store.getPath('a.b.c.d.e.f.g.h.i.j');
+    expectTypeOf(leaf).toEqualTypeOf<string>();
+  });
+});
+
+describe('subscribePath types', () => {
+  it('infers value and previous value from the path', () => {
+    const store = createStore<TestState>()(
+      dotPath(
+        (): TestState => ({
+          user: { name: 'Alice', age: 30, tags: [] },
+          items: [],
+          count: 0,
+        })
+      )
+    );
+
+    store.subscribePath('user.name', (value, previousValue) => {
+      expectTypeOf(value).toEqualTypeOf<string>();
+      expectTypeOf(previousValue).toEqualTypeOf<string>();
+    });
+
+    const unsubscribe = store.subscribePath('count', () => {});
+    expectTypeOf(unsubscribe).toEqualTypeOf<() => void>();
   });
 });
 

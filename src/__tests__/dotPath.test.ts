@@ -37,6 +37,79 @@ function createTestStore() {
   );
 }
 
+describe('stores with action functions in state', () => {
+  interface ActionState {
+    count: number;
+    user: { name: string; greet: () => string };
+    increment: () => void;
+  }
+
+  function createActionStore() {
+    return createStore<ActionState>()(
+      dotPath((set) => ({
+        count: 0,
+        user: { name: 'Alice', greet: () => 'hi' },
+        increment: () => set((prev) => ({ count: prev.count + 1 })),
+      }))
+    );
+  }
+
+  it('creates a store whose initial state contains functions', () => {
+    expect(() => createActionStore()).not.toThrow();
+  });
+
+  it('resetPath restores a data field without disturbing actions', () => {
+    const store = createActionStore();
+    store.setPath('count', 41);
+    store.getState().increment();
+    expect(store.getPath('count')).toBe(42);
+    store.resetPath('count');
+    expect(store.getPath('count')).toBe(0);
+    store.getState().increment();
+    expect(store.getPath('count')).toBe(1);
+  });
+
+  it('resetPath on a subtree containing a function keeps the action callable', () => {
+    const store = createActionStore();
+    store.setPath('user.name', 'Bob');
+    store.resetPath('user');
+    expect(store.getPath('user.name')).toBe('Alice');
+    expect(store.getState().user.greet()).toBe('hi');
+  });
+
+  it('supports circular references in initial state', () => {
+    interface Node {
+      name: string;
+      self?: Node;
+    }
+    const node: Node = { name: 'root' };
+    node.self = node;
+    const store = createStore<{ node: Node }>()(dotPath(() => ({ node })));
+    store.setPath('node.name', 'changed');
+    store.resetPath('node.name');
+    expect(store.getPath('node.name')).toBe('root');
+  });
+});
+
+describe('resetPath for paths absent from initial state', () => {
+  it('removes an object key that was not initially set', () => {
+    const store = createTestStore();
+    store.setPath('nullable', 'later');
+    expect('nullable' in store.getState()).toBe(true);
+    store.resetPath('nullable');
+    expect('nullable' in store.getState()).toBe(false);
+    expect(store.getPath('nullable')).toBeUndefined();
+  });
+
+  it('removes an array element that was not initially present', () => {
+    const store = createTestStore();
+    store.setPath('items.2' as 'items.0', { id: 3, title: 'Third' });
+    expect(store.getState().items).toHaveLength(3);
+    store.resetPath('items.2' as 'items.0');
+    expect(store.getState().items).toHaveLength(2);
+  });
+});
+
 describe('getPath', () => {
   it('gets a top-level value', () => {
     const store = createTestStore();
@@ -173,17 +246,102 @@ describe('resetPath', () => {
 });
 
 describe('path parsing edge cases', () => {
-  it('handles bracket notation for array indices', () => {
+  it('handles bracket notation for array indices at runtime', () => {
     const store = createTestStore();
-    // bracket notation access via setPath/getPath
-    store.setPath('items.0.title' as 'items.0.title', 'Bracket Test');
-    expect(store.getPath('items.0.title')).toBe('Bracket Test');
+    // Paths<T> only emits dot notation, so bracket syntax needs a cast —
+    // this exercises the runtime bracket parser with a real bracket string.
+    store.setPath('items[0].title' as unknown as 'items.0.title', 'Bracket');
+    expect(store.getPath('items[0].title' as unknown as 'items.0.title')).toBe(
+      'Bracket'
+    );
+    expect(store.getPath('items.0.title')).toBe('Bracket');
+  });
+
+  it('handles quoted keys containing dots at runtime', () => {
+    interface QuotedState {
+      config: Record<string, string>;
+    }
+    const store = createStore<QuotedState>()(
+      dotPath((): QuotedState => ({ config: { 'remote.url': 'origin' } }))
+    );
+    expect(
+      store.getPath('config["remote.url"]' as unknown as `config.${string}`)
+    ).toBe('origin');
+  });
+
+  it('rejects __proto__ path segments', () => {
+    const store = createTestStore();
+    expect(() =>
+      store.setPath(
+        'user.__proto__' as unknown as 'user.name',
+        'polluted' as never
+      )
+    ).toThrow(/__proto__/);
+    expect(() =>
+      store.getPath('user.__proto__.x' as unknown as 'user.name')
+    ).toThrow(/__proto__/);
   });
 
   it('handles multiple levels of nesting', () => {
     const store = createTestStore();
     store.setPath('config.nested.deep', 'very deep');
     expect(store.getState().config.nested.deep).toBe('very deep');
+  });
+});
+
+describe('subscribePath', () => {
+  it('fires the listener when the value at the path changes', () => {
+    const store = createTestStore();
+    const calls: Array<[unknown, unknown]> = [];
+    store.subscribePath('user.name', (value, previousValue) => {
+      calls.push([value, previousValue]);
+    });
+    store.setPath('user.name', 'Bob');
+    expect(calls).toEqual([['Bob', 'Alice']]);
+  });
+
+  it('does not fire for unrelated path changes', () => {
+    const store = createTestStore();
+    let calls = 0;
+    store.subscribePath('user.name', () => {
+      calls++;
+    });
+    store.setPath('count', 1);
+    store.setPath('items.0.title', 'Changed');
+    store.setState({ count: 2 });
+    expect(calls).toBe(0);
+  });
+
+  it('fires for parent-path subscriptions when a child changes', () => {
+    const store = createTestStore();
+    let calls = 0;
+    store.subscribePath('user', () => {
+      calls++;
+    });
+    store.setPath('user.name', 'Bob');
+    expect(calls).toBe(1);
+  });
+
+  it('returns an unsubscribe function', () => {
+    const store = createTestStore();
+    let calls = 0;
+    const unsubscribe = store.subscribePath('count', () => {
+      calls++;
+    });
+    store.setPath('count', 1);
+    unsubscribe();
+    store.setPath('count', 2);
+    expect(calls).toBe(1);
+  });
+
+  it('fires on setState changes too', () => {
+    const store = createTestStore();
+    const values: unknown[] = [];
+    store.subscribePath('count', (value) => {
+      values.push(value);
+    });
+    store.setState({ count: 7 });
+    expect(values).toEqual([7]);
   });
 });
 
