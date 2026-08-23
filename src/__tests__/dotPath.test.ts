@@ -37,6 +37,47 @@ function createTestStore() {
   );
 }
 
+describe('stores with action functions in state', () => {
+  interface ActionState {
+    count: number;
+    user: { name: string; greet: () => string };
+    increment: () => void;
+  }
+
+  function createActionStore() {
+    return createStore<ActionState>()(
+      dotPath((set) => ({
+        count: 0,
+        user: { name: 'Alice', greet: () => 'hi' },
+        increment: () => set((prev) => ({ count: prev.count + 1 })),
+      }))
+    );
+  }
+
+  it('creates a store whose initial state contains functions', () => {
+    expect(() => createActionStore()).not.toThrow();
+  });
+
+  it('resetPath restores a data field without disturbing actions', () => {
+    const store = createActionStore();
+    store.setPath('count', 41);
+    store.getState().increment();
+    expect(store.getPath('count')).toBe(42);
+    store.resetPath('count');
+    expect(store.getPath('count')).toBe(0);
+    store.getState().increment();
+    expect(store.getPath('count')).toBe(1);
+  });
+
+  it('resetPath on a subtree containing a function keeps the action callable', () => {
+    const store = createActionStore();
+    store.setPath('user.name', 'Bob');
+    store.resetPath('user');
+    expect(store.getPath('user.name')).toBe('Alice');
+    expect(store.getState().user.greet()).toBe('hi');
+  });
+});
+
 describe('getPath', () => {
   it('gets a top-level value', () => {
     const store = createTestStore();

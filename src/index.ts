@@ -141,6 +141,46 @@ const deepSet = (
 };
 
 /**
+ * Deep clone for reset snapshots.
+ *
+ * `structuredClone` throws on functions, so it cannot snapshot the common
+ * Zustand shape of state + action functions. This clone copies plain
+ * objects, arrays, Date, Map, and Set; everything else (functions, class
+ * instances, primitives) passes through by reference.
+ */
+const snapshot = <T>(value: T): T => {
+  if (value === null || typeof value !== 'object') return value;
+
+  if (Array.isArray(value)) {
+    return value.map(snapshot) as unknown as T;
+  }
+  if (value instanceof Date) {
+    return new Date(value.getTime()) as unknown as T;
+  }
+  if (value instanceof Map) {
+    const out = new Map();
+    for (const [k, v] of value) out.set(k, snapshot(v));
+    return out as unknown as T;
+  }
+  if (value instanceof Set) {
+    const out = new Set();
+    for (const v of value) out.add(snapshot(v));
+    return out as unknown as T;
+  }
+
+  const proto = Object.getPrototypeOf(value);
+  // Non-plain instances (class instances, RegExp, etc.) pass by reference:
+  // cloning them cannot preserve behavior generically.
+  if (proto !== Object.prototype && proto !== null) return value;
+
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(value)) {
+    out[key] = snapshot((value as Record<string, unknown>)[key]);
+  }
+  return out as T;
+};
+
+/**
  * Deep equality check for memoization.
  * Supports: primitives, objects, arrays, Date, RegExp.
  * Ignores: Map, Set (treats as reference equal).
@@ -274,7 +314,7 @@ const dotPathImpl =
   ) => {
     const initialState = config(set, get, api);
 
-    const initialSnapshot = structuredClone(initialState);
+    const initialSnapshot = snapshot(initialState);
 
     const augmentedApi = api as unknown as StoreWithPaths<any>;
 
@@ -293,11 +333,7 @@ const dotPathImpl =
     augmentedApi.resetPath = (path: string) => {
       const segments = parsePath(path);
       const initialValue = deepGet(initialSnapshot, segments);
-      const valueToRestore =
-        initialValue && typeof initialValue === 'object'
-          ? structuredClone(initialValue)
-          : initialValue;
-      set(deepSet(get(), segments, valueToRestore), true);
+      set(deepSet(get(), segments, snapshot(initialValue)), true);
     };
 
     augmentedApi.usePath = (path: string, defaultValue?: unknown): any => {
