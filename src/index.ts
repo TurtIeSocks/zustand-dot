@@ -364,89 +364,89 @@ declare module 'zustand/vanilla' {
 const dotPathImpl =
   // The options argument only carries PathsOptions at the type level; the
   // runtime never reads it.
-  (config: StateCreator<any, any, any>, _options?: unknown) =>
-  (
-    set: StoreApi<any>['setState'],
-    get: StoreApi<any>['getState'],
-    api: StoreApi<any>
-  ) => {
-    const initialState = config(set, get, api);
-
-    const initialSnapshot = snapshot(initialState);
-
-    const augmentedApi = api as unknown as StoreWithPaths<any>;
-
-    augmentedApi.getPath = (path: string, defaultValue?: unknown): any => {
-      const raw = deepGet(get(), parsePath(path));
-      if ((raw === null || raw === undefined) && defaultValue !== undefined) {
-        return defaultValue;
-      }
-      return raw;
-    };
-
-    augmentedApi.setPath = (path: string, valueOrUpdater: unknown) => {
-      set(deepSet(get(), parsePath(path), valueOrUpdater), true);
-    };
-
-    augmentedApi.resetPath = (path: string) => {
-      const segments = parsePath(path);
-      const initialValue = deepGet(initialSnapshot, segments);
-      // A path absent from the initial state is removed rather than set to
-      // `undefined`, so reset restores "was never set" faithfully.
-      const valueToRestore =
-        initialValue === undefined ? DELETE : snapshot(initialValue);
-      set(deepSet(get(), segments, valueToRestore), true);
-    };
-
-    augmentedApi.subscribePath = (
-      path: string,
-      listener: (value: any, previousValue: any) => void
+    (config: StateCreator<any, any, any>, _options?: unknown) =>
+    (
+      set: StoreApi<any>['setState'],
+      get: StoreApi<any>['getState'],
+      api: StoreApi<any>
     ) => {
-      const segments = parsePath(path);
-      return api.subscribe((state, previousState) => {
-        const value = deepGet(state, segments);
-        const previousValue = deepGet(previousState, segments);
-        // Structural sharing makes Object.is exact: an untouched subtree
-        // keeps its reference, so only real changes fire the listener.
-        if (!Object.is(value, previousValue)) {
-          listener(value, previousValue);
+      const initialState = config(set, get, api);
+
+      const initialSnapshot = snapshot(initialState);
+
+      const augmentedApi = api as unknown as StoreWithPaths<any>;
+
+      augmentedApi.getPath = (path: string, defaultValue?: unknown): any => {
+        const raw = deepGet(get(), parsePath(path));
+        if ((raw === null || raw === undefined) && defaultValue !== undefined) {
+          return defaultValue;
         }
-      });
-    };
+        return raw;
+      };
 
-    augmentedApi.usePath = (path: string, defaultValue?: unknown): any => {
-      const stableDefault = useDeepCompareMemo(defaultValue);
+      augmentedApi.setPath = (path: string, valueOrUpdater: unknown) => {
+        set(deepSet(get(), parsePath(path), valueOrUpdater), true);
+      };
 
-      const segments = useMemo(() => parsePath(path), [path]);
+      augmentedApi.resetPath = (path: string) => {
+        const segments = parsePath(path);
+        const initialValue = deepGet(initialSnapshot, segments);
+        // A path absent from the initial state is removed rather than set to
+        // `undefined`, so reset restores "was never set" faithfully.
+        const valueToRestore =
+          initialValue === undefined ? DELETE : snapshot(initialValue);
+        set(deepSet(get(), segments, valueToRestore), true);
+      };
 
-      const selector = useCallback(
-        (state: any) => {
-          const raw = deepGet(state, segments);
-          if (
-            (raw === null || raw === undefined) &&
-            stableDefault !== undefined
-          ) {
-            return stableDefault;
+      augmentedApi.subscribePath = (
+        path: string,
+        listener: (value: any, previousValue: any) => void
+      ) => {
+        const segments = parsePath(path);
+        return api.subscribe((state, previousState) => {
+          const value = deepGet(state, segments);
+          const previousValue = deepGet(previousState, segments);
+          // Structural sharing makes Object.is exact: an untouched subtree
+          // keeps its reference, so only real changes fire the listener.
+          if (!Object.is(value, previousValue)) {
+            listener(value, previousValue);
           }
-          return raw;
-        },
-        [segments, stableDefault]
-      );
+        });
+      };
 
-      const value = useStore(api as any, selector);
+      augmentedApi.usePath = (path: string, defaultValue?: unknown): any => {
+        const stableDefault = useDeepCompareMemo(defaultValue);
 
-      const setter = useCallback(
-        (updater: unknown) => {
-          set(deepSet(get(), segments, updater), true);
-        },
-        [segments]
-      );
+        const segments = useMemo(() => parsePath(path), [path]);
 
-      return [value, setter];
+        const selector = useCallback(
+          (state: any) => {
+            const raw = deepGet(state, segments);
+            if (
+              (raw === null || raw === undefined) &&
+              stableDefault !== undefined
+            ) {
+              return stableDefault;
+            }
+            return raw;
+          },
+          [segments, stableDefault]
+        );
+
+        const value = useStore(api as any, selector);
+
+        const setter = useCallback(
+          (updater: unknown) => {
+            set(deepSet(get(), segments, updater), true);
+          },
+          [segments]
+        );
+
+        return [value, setter];
+      };
+
+      return initialState;
     };
-
-    return initialState;
-  };
 
 /**
  * Zustand middleware that adds deep dot-path access to your store.

@@ -197,9 +197,7 @@ describe('configurable path depth', () => {
   });
 
   it('store with a depth option accepts deeper paths', () => {
-    const store = createStore<DeepState>()(
-      dotPath(deepInitial, { depth: 12 })
-    );
+    const store = createStore<DeepState>()(dotPath(deepInitial, { depth: 12 }));
     store.setPath('a.b.c.d.e.f.g.h.i.j', 'x');
     const leaf = store.getPath('a.b.c.d.e.f.g.h.i.j');
     expectTypeOf(leaf).toEqualTypeOf<string>();
