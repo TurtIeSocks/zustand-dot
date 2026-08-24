@@ -1,6 +1,6 @@
 {
   "name": "zustand-dot",
-  "version": "0.0.0-development",
+  "version": "1.2.0",
   "description": "Zustand middleware for deep dot-path access and reactive hooks",
   "keywords": [
     "zustand",
