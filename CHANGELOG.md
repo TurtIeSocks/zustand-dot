@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/TurtIeSocks/zustand-dot/compare/v1.2.0...v1.2.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **deps:** bump dot.paths to ^0.1.2 ([b311447](https://github.com/TurtIeSocks/zustand-dot/commit/b3114470ce1b4c6852475d64342d886580fc2f4d))
+
 # [1.2.0](https://github.com/TurtIeSocks/zustand-dot/compare/v1.1.0...v1.2.0) (2026-08-24)
 
 
