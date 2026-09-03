@@ -79,7 +79,7 @@
     "zustand": "^5.0.12"
   },
   "dependencies": {
-    "dot.paths": "^0.1.1"
+    "dot.paths": "^0.1.2"
   },
   "peerDependencies": {
     "react": ">=18",
