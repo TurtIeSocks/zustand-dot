@@ -11,11 +11,11 @@ import {
 // 1. Type Utilities
 // ==========================================
 
-// `Paths`/`Get`/`GetStrict`/`PathsOptions` come from the standalone `dot.paths`
-// package (extracted from this repo), re-exported under their upstream names:
+// Every type from the standalone `dot.paths` package (extracted from this
+// repo) is re-exported under its upstream name:
 // `Get` is the loose resolver (any string path), `GetStrict` constrains the
 // path to `Paths<T>` for autocomplete and invalid-path rejection.
-export type { Get, GetStrict, Paths, PathsOptions } from 'dot.paths';
+export type * from 'dot.paths';
 
 // ==========================================
 // 2. Runtime Utilities
