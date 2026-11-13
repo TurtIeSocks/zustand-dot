@@ -1,3 +1,15 @@
+# [1.3.0](https://github.com/TurtIeSocks/zustand-dot/compare/v1.2.1...v1.3.0) (2026-11-13)
+
+
+### Bug Fixes
+
+* **deps:** bump dot.paths to ^0.2.3 ([81b3382](https://github.com/TurtIeSocks/zustand-dot/commit/81b33821ef5092cffd2c7ef03b4867edb1d84677)), closes [chelonejs/dot.paths#11](https://github.com/chelonejs/dot.paths/issues/11)
+
+
+### Features
+
+* re-export every dot.paths type, adding GetOptions ([4d8ec79](https://github.com/TurtIeSocks/zustand-dot/commit/4d8ec796e52e29c73b0c585b8c396efadc2d7d4c))
+
 ## [1.2.1](https://github.com/TurtIeSocks/zustand-dot/compare/v1.2.0...v1.2.1) (2026-09-03)
 
 
