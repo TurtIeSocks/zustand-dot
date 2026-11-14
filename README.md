@@ -125,6 +125,16 @@ const unsubscribe = useStore.subscribePath('user.profile.name', (name, prev) => 
 unsubscribe()
 ```
 
+## Other Middleware
+
+`dotPath` composes with `devtools`, `persist` and `immer` in any order. Path writes go through the store's current `api.setState`, which those middleware patch, so they see every write whether they sit inside or outside `dotPath`.
+
+```typescript
+const useStore = create<State>()(
+  dotPath(devtools(persist((set) => ({ ... }), { name: 'app' })))
+)
+```
+
 ## TypeScript Support
 
 The middleware leverages advanced recursive types to provide autocomplete and validation.

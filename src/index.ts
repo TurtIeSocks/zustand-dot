@@ -592,6 +592,18 @@ const dotPathImpl =
 
       const augmentedApi = api as unknown as StoreWithPaths<any>;
 
+      /**
+       * Applies an immutable write at `segments`.
+       *
+       * Reads `api.setState` on every call instead of using the `set` captured
+       * above. Middleware such as `devtools`, `persist` and `immer` patch
+       * `api.setState`, so this reaches them whichever side of `dotPath` they
+       * were composed on.
+       */
+      const write = (segments: string[], valueOrUpdater: unknown) => {
+        api.setState(deepSet(get(), segments, valueOrUpdater), true);
+      };
+
       augmentedApi.getPath = (path: string, defaultValue?: unknown): any => {
         const raw = deepGet(get(), parsePath(path));
         if ((raw === null || raw === undefined) && defaultValue !== undefined) {
@@ -601,7 +613,7 @@ const dotPathImpl =
       };
 
       augmentedApi.setPath = (path: string, valueOrUpdater: unknown) => {
-        set(deepSet(get(), parsePath(path), valueOrUpdater), true);
+        write(parsePath(path), valueOrUpdater);
       };
 
       augmentedApi.resetPath = (path: string) => {
@@ -611,7 +623,7 @@ const dotPathImpl =
         // `undefined`, so reset restores "was never set" faithfully.
         const valueToRestore =
           initialValue === undefined ? DELETE : snapshot(initialValue);
-        set(deepSet(get(), segments, valueToRestore), true);
+        write(segments, valueToRestore);
       };
 
       augmentedApi.subscribePath = (
@@ -652,9 +664,7 @@ const dotPathImpl =
         const value = useStore(api as any, selector);
 
         const setter = useCallback(
-          (updater: unknown) => {
-            set(deepSet(get(), segments, updater), true);
-          },
+          (updater: unknown) => write(segments, updater),
           [segments]
         );
 
@@ -691,10 +701,12 @@ const dotPathImpl =
  *   middleware.
  *
  * @remarks
- * Compose `dotPath` innermost, directly around your initializer, when using
- * other middleware: `devtools(persist(dotPath(...), { name: 'app' }))`. Path writes go through
- * the `set` that `dotPath` receives, so middleware wrapped *inside* it (such
- * as `devtools` logging or `persist` saving) would not see them.
+ * Composes with other middleware in any order. Path writes go through the
+ * store's current `api.setState`, so middleware that patches it (`devtools`,
+ * `persist`, `immer`) sees them whether it sits inside or outside `dotPath`.
+ *
+ * Middleware that only wraps the `set` it passes down, without patching
+ * `api.setState`, does not see path writes in either order.
  *
  * @example
  * ```ts
