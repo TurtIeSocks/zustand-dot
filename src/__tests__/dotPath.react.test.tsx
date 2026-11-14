@@ -1,7 +1,9 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { create } from 'zustand';
+import { devtools } from 'zustand/middleware';
 import { dotPath } from '../index';
+import { mockDevtools } from './devtoolsMock';
 
 interface TestState {
   user: {
@@ -142,5 +144,33 @@ describe('usePath hook', () => {
     });
 
     expect(result.current[0]).toBe(99);
+  });
+});
+
+describe('usePath setter with devtools', () => {
+  it('records a named setPath action', () => {
+    const devtoolsMock = mockDevtools();
+    try {
+      const useStore = create<TestState>()(
+        dotPath(
+          devtools(
+            () => ({
+              user: { name: 'Alice', age: 30 },
+              items: [],
+              count: 0,
+            }),
+            { enabled: true }
+          )
+        )
+      );
+      const { result } = renderHook(() => useStore.usePath('user.name'));
+
+      act(() => result.current[1]('Bob'));
+
+      expect(result.current[0]).toBe('Bob');
+      expect(devtoolsMock.sentTypes()).toEqual(['setPath/user.name']);
+    } finally {
+      devtoolsMock.restore();
+    }
   });
 });

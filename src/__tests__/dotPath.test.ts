@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { createJSONStorage, devtools, persist } from 'zustand/middleware';
 import { createStore } from 'zustand/vanilla';
 import { dotPath } from '../index';
+import { mockDevtools } from './devtoolsMock';
 
 interface TestState {
   user: {
@@ -370,5 +372,71 @@ describe('middleware composition', () => {
     expect(states).toHaveLength(2);
     expect(states[0].count).toBe(1);
     expect(states[1].count).toBe(2);
+  });
+});
+
+describe('composition order with other middleware', () => {
+  interface Small {
+    user: { name: string; age: number };
+  }
+  const initial = (): Small => ({ user: { name: 'Alice', age: 30 } });
+
+  function memoryStorage() {
+    const data = new Map<string, string>();
+    return {
+      data,
+      storage: createJSONStorage(() => ({
+        getItem: (k: string) => data.get(k) ?? null,
+        setItem: (k: string, v: string) => void data.set(k, v),
+        removeItem: (k: string) => void data.delete(k),
+      })),
+    };
+  }
+  const persisted = (data: Map<string, string>) =>
+    JSON.parse(data.get('test') ?? 'null')?.state as Small | undefined;
+
+  it.each([
+    ['dotPath outside persist', 'outer'],
+    ['dotPath inside persist', 'inner'],
+  ] as const)('persist saves path writes with %s', (_, order) => {
+    const { data, storage } = memoryStorage();
+    const opts = { name: 'test', storage };
+    const store =
+      order === 'outer'
+        ? createStore<Small>()(dotPath(persist(initial, opts)))
+        : createStore<Small>()(persist(dotPath(initial), opts));
+
+    store.setPath('user.name', 'Bob');
+    expect(persisted(data)?.user.name).toBe('Bob');
+
+    store.resetPath('user.name');
+    expect(persisted(data)?.user.name).toBe('Alice');
+  });
+
+  describe('devtools', () => {
+    let devtoolsMock: ReturnType<typeof mockDevtools>;
+    afterEach(() => devtoolsMock.restore());
+
+    it.each([
+      ['dotPath outside devtools', 'outer'],
+      ['dotPath inside devtools', 'inner'],
+    ] as const)('records named path actions with %s', (_, order) => {
+      devtoolsMock = mockDevtools();
+      const opts = { enabled: true };
+      const store =
+        order === 'outer'
+          ? createStore<Small>()(dotPath(devtools(initial, opts)))
+          : createStore<Small>()(devtools(dotPath(initial), opts));
+
+      store.setPath('user.name', 'Bob');
+      store.setPath('user.age', (age) => age + 1);
+      store.resetPath('user');
+
+      expect(devtoolsMock.sentTypes()).toEqual([
+        'setPath/user.name',
+        'setPath/user.age',
+        'resetPath/user',
+      ]);
+    });
   });
 });
