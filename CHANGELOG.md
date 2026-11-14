@@ -1,3 +1,16 @@
+# [1.4.0](https://github.com/TurtIeSocks/zustand-dot/compare/v1.3.0...v1.4.0) (2026-11-14)
+
+
+### Bug Fixes
+
+* route path writes through api.setState so middleware order no longer matters ([1b719a0](https://github.com/TurtIeSocks/zustand-dot/commit/1b719a0e825086698bdbbc8ce05856184103e936))
+
+
+### Features
+
+* add jsdocs to public APIs ([f06ef02](https://github.com/TurtIeSocks/zustand-dot/commit/f06ef02ff46b0e7ed14b9243356cb0b9e67f8a60))
+* name path writes in Redux DevTools ([717dd81](https://github.com/TurtIeSocks/zustand-dot/commit/717dd818d3e63a5c5770740f5c214a13aa4664a3))
+
 # [1.3.0](https://github.com/TurtIeSocks/zustand-dot/compare/v1.2.1...v1.3.0) (2026-11-13)
 
 
