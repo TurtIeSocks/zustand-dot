@@ -222,6 +222,7 @@ const snapshotWith = <T>(value: T, seen: WeakMap<object, unknown>): T => {
   return out as T;
 };
 
+/** Deep-copies `value` for reset snapshots. See {@link snapshotWith}. */
 const snapshot = <T>(value: T): T => snapshotWith(value, new WeakMap());
 
 /**
@@ -293,6 +294,11 @@ const deepEqual = (a: unknown, b: unknown): boolean => {
 // 3. React Hooks
 // ==========================================
 
+/**
+ * **React hook.** Returns the previous `value` reference for as long as the
+ * new one is {@link deepEqual} to it, so inline object/array arguments stay
+ * referentially stable across renders.
+ */
 function useDeepCompareMemo<T>(value: T): T {
   const ref = useRef<T>(value);
 
@@ -308,14 +314,85 @@ function useDeepCompareMemo<T>(value: T): T {
 // ==========================================
 
 /**
- * Methods added to a Zustand store by the `dotPath` middleware.
- * Provides deep dot-path access for getting, setting, subscribing to, and resetting nested state.
+ * Methods the {@link dotPath} middleware attaches to a Zustand store.
  *
- * `O` carries the `PathsOptions` given to `dotPath` (e.g. `{ depth: 12 }`)
- * into path enumeration. Value resolution uses the loose `Get`, which works
- * at any depth once the path has passed the `Paths<T, O>` constraint.
+ * They live on the store API, so they are reached as properties of the hook
+ * returned by `create` (`useStore.getPath(...)`) or of a vanilla store from
+ * `createStore` (`store.getPath(...)`).
+ *
+ * | Member            | Kind                   | Reactive | Usable outside React |
+ * | ----------------- | ---------------------- | -------- | -------------------- |
+ * | `usePath`         | React hook             | Yes      | No                   |
+ * | `getPath`         | Imperative getter      | No       | Yes                  |
+ * | `setPath`         | Imperative setter      | —        | Yes                  |
+ * | `resetPath`       | Imperative setter      | —        | Yes                  |
+ * | `subscribePath`   | Vanilla subscription   | Yes      | Yes                  |
+ *
+ * **Path syntax.** Paths are dot-separated keys, with array indices written as
+ * numeric segments (`'user.posts.0.title'`). The runtime parser also accepts
+ * brackets (`'posts[0]'`) and quoted keys (`'config["remote.url"]'`) for keys
+ * that contain a literal dot; the typed API only accepts what
+ * {@link Paths | `Paths<T, O>`} generates, so those forms need a cast unless
+ * `O` sets `arrays: 'bracket'`. A `__proto__` segment throws at runtime.
+ *
+ * @template T - The store's state type.
+ * @template O - The {@link PathsOptions} passed to {@link dotPath} (for
+ *   example `{ depth: 12 }`). Only affects which paths are enumerated; value
+ *   types are resolved with the loose {@link Get}, which works at any depth
+ *   once the path has passed the `Paths<T, O>` constraint.
  */
 export interface StoreWithPaths<T, O extends PathsOptions = {}> {
+  /**
+   * **React hook.** Subscribes the calling component to the value at `path`
+   * and returns it alongside a setter, like `useState`.
+   *
+   * The component re-renders only when the value at `path` changes by
+   * reference (`Object.is`). Because writes use structural sharing, changes
+   * elsewhere in the store never re-render it.
+   *
+   * Follows the Rules of Hooks: call it at the top level of a function
+   * component or custom hook, never conditionally or outside React.
+   *
+   * @template P - The path, constrained to `Paths<T, O>` for autocomplete.
+   * @template D - The type of `defaultValue`, if one is given.
+   * @param path - Dot path to the value to subscribe to.
+   * @param defaultValue - Returned in place of the stored value when it is
+   *   `null` or `undefined`. Compared deeply between renders, so an inline
+   *   `[]` or `{}` is safe and will not cause re-render loops. Hoist large
+   *   defaults to a module constant to keep that comparison cheap. It is never
+   *   written to the store.
+   * @returns A `[value, setValue]` tuple.
+   *   - `value` is the current value at `path`, or `defaultValue` when that is
+   *     `null`/`undefined`. With a default, its type excludes `null` and
+   *     `undefined`.
+   *   - `setValue` behaves like {@link StoreWithPaths.setPath | setPath} bound to
+   *     `path`. Its identity is stable across renders while `path` is
+   *     unchanged, so it is safe in dependency arrays. A functional updater
+   *     receives the raw stored value, **not** `defaultValue`.
+   *
+   * @example
+   * ```tsx
+   * function NameField() {
+   *   // Re-renders only when user.profile.name changes
+   *   const [name, setName] = useStore.usePath('user.profile.name');
+   *   return <input value={name} onChange={(e) => setName(e.target.value)} />;
+   * }
+   * ```
+   *
+   * @example
+   * ```tsx
+   * function PostCount() {
+   *   // Inline default is safe: it is compared deeply, not by reference
+   *   const [posts, setPosts] = useStore.usePath('user.posts', []);
+   *   const add = () =>
+   *     // `prev` is the stored value, which may still be undefined
+   *     setPosts((prev) => [...(prev ?? []), { id: Date.now(), title: '' }]);
+   *   return <button onClick={add}>{posts.length} posts</button>;
+   * }
+   * ```
+   *
+   * @see {@link StoreWithPaths.getPath} for a non-reactive read.
+   */
   usePath: <P extends Paths<T, O>, D extends Get<T, P> | undefined = undefined>(
     path: P,
     defaultValue?: D
@@ -323,22 +400,158 @@ export interface StoreWithPaths<T, O extends PathsOptions = {}> {
     D extends undefined ? Get<T, P> : NonNullable<Get<T, P>> | D,
     (valOrUpdater: Get<T, P> | ((prev: Get<T, P>) => Get<T, P>)) => void,
   ];
+
+  /**
+   * **Imperative getter (not a hook, not reactive).** Reads the current value
+   * at `path` once and returns it.
+   *
+   * Calling it during render does **not** subscribe the component to
+   * updates; use {@link StoreWithPaths.usePath | usePath} for that. Safe to
+   * call anywhere: event handlers, store actions, effects, or outside React.
+   *
+   * @template P - The path, constrained to `Paths<T, O>` for autocomplete.
+   * @template D - The type of `defaultValue`, if one is given.
+   * @param path - Dot path to the value to read.
+   * @param defaultValue - Returned when the stored value is `null` or
+   *   `undefined`, including when an intermediate segment is missing.
+   * @returns The value at `path`, or `defaultValue` when that is
+   *   `null`/`undefined`. Without a default, a missing path yields
+   *   `undefined`.
+   *
+   * @example
+   * ```ts
+   * const age = useStore.getPath('user.profile.age');
+   * const firstTitle = useStore.getPath('user.posts.0.title', 'Untitled');
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Inside an action, read and write through the store API
+   * // (State here also declares `birthday: () => void`)
+   * const useStore = create<State>()(
+   *   dotPath((set, get, api) => ({
+   *     user: { profile: { name: 'Alice', age: 30 }, posts: [] },
+   *     birthday: () => api.setPath('user.profile.age', api.getPath('user.profile.age') + 1),
+   *   }))
+   * );
+   * ```
+   */
   getPath: <P extends Paths<T, O>, D extends Get<T, P> | undefined = undefined>(
     path: P,
     defaultValue?: D
   ) => D extends undefined ? Get<T, P> : NonNullable<Get<T, P>> | D;
+
+  /**
+   * **Imperative setter (not a hook).** Immutably writes a value at `path` and
+   * notifies subscribers synchronously.
+   *
+   * Only the objects and arrays along `path` are copied; every other subtree
+   * keeps its reference (structural sharing), so `usePath` and
+   * `subscribePath` listeners on unrelated paths are not triggered. Missing
+   * intermediate containers are created: an array when the next segment is
+   * numeric, otherwise a plain object.
+   *
+   * Safe to call anywhere, including outside React.
+   *
+   * @template P - The path, constrained to `Paths<T, O>` for autocomplete.
+   * @param path - Dot path to the value to write.
+   * @param valueOrUpdater - The new value, or an updater
+   *   `(prev) => next` that receives the current value at `path`.
+   *
+   * @remarks
+   * Any function passed is treated as an updater, as with React's
+   * `setState`. To store a function itself, return it from an updater:
+   * `setPath('onSave', () => handleSave)`.
+   *
+   * @example
+   * ```ts
+   * // Direct value
+   * useStore.setPath('user.profile.age', 31);
+   *
+   * // Functional update
+   * useStore.setPath('user.posts', (posts) => [...posts, { id: 1, title: 'New' }]);
+   *
+   * // Array element by index
+   * useStore.setPath('user.posts.0.title', 'Updated title');
+   * ```
+   */
   setPath: <P extends Paths<T, O>>(
     path: P,
     valueOrUpdater: Get<T, P> | ((prev: Get<T, P>) => Get<T, P>)
   ) => void;
+
+  /**
+   * **Imperative setter (not a hook).** Restores the value at `path` to what it
+   * was when the store was created, and notifies subscribers synchronously.
+   *
+   * The initial state is deep-copied once at creation, and the restored
+   * value is copied again on each reset, so later mutations cannot leak into
+   * the snapshot. Plain objects, arrays, `Date`, `Map` and `Set` are copied;
+   * functions (such as store actions) and class instances are kept by
+   * reference, so resetting a subtree that contains actions keeps them
+   * callable.
+   *
+   * A path that did not exist in the initial state is removed (the key is
+   * deleted, or the array element spliced out) rather than set to
+   * `undefined`.
+   *
+   * @param path - Dot path of the value or subtree to reset.
+   *
+   * @example
+   * ```ts
+   * useStore.setPath('user.profile.name', 'Bob');
+   * useStore.resetPath('user.profile'); // back to { name: 'Alice', age: 30 }
+   * ```
+   */
   resetPath: (path: Paths<T, O>) => void;
+
+  /**
+   * **Vanilla subscription (not a hook).** Calls `listener` whenever the value
+   * at `path` changes, and returns a function that unsubscribes.
+   *
+   * Changes are detected by reference (`Object.is`) after each store update,
+   * so writes to unrelated paths never fire the listener. It is **not**
+   * called with the current value on subscribe.
+   *
+   * Works without React. Inside a component, prefer
+   * {@link StoreWithPaths.usePath | usePath} for rendering, and reach for
+   * this only for side effects, cleaning up in the effect's return.
+   *
+   * @template P - The path, constrained to `Paths<T, O>` for autocomplete.
+   * @param path - Dot path to watch.
+   * @param listener - Called with the new and previous values at `path`.
+   * @returns An unsubscribe function. Call it to stop listening.
+   *
+   * @example
+   * ```ts
+   * const unsubscribe = useStore.subscribePath('user.profile.name', (name, prev) => {
+   *   console.log(`${prev} renamed to ${name}`);
+   * });
+   *
+   * // Later
+   * unsubscribe();
+   * ```
+   *
+   * @example
+   * ```tsx
+   * // Side effect in a component, cleaned up on unmount
+   * useEffect(
+   *   () => useStore.subscribePath('settings.theme', (theme) => applyTheme(theme)),
+   *   []
+   * );
+   * ```
+   */
   subscribePath: <P extends Paths<T, O>>(
     path: P,
     listener: (value: Get<T, P>, previousValue: Get<T, P>) => void
   ) => () => void;
 }
 
-// Type for the middleware configuration
+/**
+ * Signature of {@link dotPath}. `Mps`/`Mcs` are Zustand's mutator lists, which
+ * let it compose with other middleware while registering the `dotPath`
+ * mutator so the store type gains {@link StoreWithPaths}.
+ */
 type DotPathMiddleware = <
   T,
   O extends PathsOptions = {},
@@ -349,11 +562,14 @@ type DotPathMiddleware = <
   options?: O
 ) => StateCreator<T, Mps, [['dotPath', O], ...Mcs]>;
 
+/** State type of a store API `S`, read from its `getState` return type. */
 type ExtractState<S> = S extends { getState: () => infer T } ? T : never;
+/** `T` with the keys of `U` overwritten by `U`'s (Zustand's mutator idiom). */
 type Write<T, U> = Omit<T, keyof U> & U;
 
 declare module 'zustand/vanilla' {
   interface StoreMutators<S, A> {
+    /** Adds {@link StoreWithPaths} to any store created with {@link dotPath}. */
     dotPath: Write<
       S,
       StoreWithPaths<ExtractState<S>, A extends PathsOptions ? A : {}>
@@ -449,18 +665,65 @@ const dotPathImpl =
     };
 
 /**
- * Zustand middleware that adds deep dot-path access to your store.
+ * Zustand middleware that adds typed, deep dot-path access to a store.
+ *
+ * Wrap a state creator with it, and the resulting store gains the members of
+ * {@link StoreWithPaths}: the {@link StoreWithPaths.usePath | usePath} hook,
+ * plus {@link StoreWithPaths.getPath | getPath},
+ * {@link StoreWithPaths.setPath | setPath},
+ * {@link StoreWithPaths.resetPath | resetPath} and
+ * {@link StoreWithPaths.subscribePath | subscribePath}. Paths autocomplete
+ * from the state type, and invalid paths or mistyped values fail to compile.
+ *
+ * This is the middleware factory itself, not a hook: call it once when
+ * creating the store.
+ *
+ * @template T - The store's state type, inferred from `create<T>()`.
+ * @template O - The {@link PathsOptions} type, inferred from `options`.
+ * @param initializer - The state creator, `(set, get, api) => initialState`,
+ *   exactly as you would pass to `create`. Its return value is also
+ *   snapshotted as the baseline for `resetPath`.
+ * @param options - Type-level options for path enumeration, such as
+ *   `{ depth: 12 }` to raise the default depth of 8 (max 16), or
+ *   `{ arrays: 'bracket' }` to type array paths as `items[0]`. Ignored at
+ *   runtime.
+ * @returns A state creator to pass to `create`, `createStore`, or another
+ *   middleware.
+ *
+ * @remarks
+ * Compose `dotPath` innermost, directly around your initializer, when using
+ * other middleware: `devtools(persist(dotPath(...), { name: 'app' }))`. Path writes go through
+ * the `set` that `dotPath` receives, so middleware wrapped *inside* it (such
+ * as `devtools` logging or `persist` saving) would not see them.
  *
  * @example
  * ```ts
- * const useStore = create<State>()(
- *   dotPath((set) => ({
- *     user: { name: 'Alice', age: 30 },
+ * import { create } from 'zustand';
+ * import { dotPath } from 'zustand-dot';
+ *
+ * interface State {
+ *   user: { profile: { name: string; age: number }; posts: { id: number; title: string }[] };
+ * }
+ *
+ * export const useStore = create<State>()(
+ *   dotPath(() => ({
+ *     user: { profile: { name: 'Alice', age: 30 }, posts: [] },
  *   }))
  * );
  *
- * // In a component:
- * const [name, setName] = useStore.usePath('user.name');
+ * // In a component (reactive)
+ * const [name, setName] = useStore.usePath('user.profile.name');
+ *
+ * // Anywhere (imperative)
+ * useStore.setPath('user.profile.age', 31);
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Deeper path enumeration, alongside other middleware
+ * const useStore = create<State>()(
+ *   devtools(dotPath(() => initialState, { depth: 12 }))
+ * );
  * ```
  */
 export const dotPath = dotPathImpl as unknown as DotPathMiddleware;
