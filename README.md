@@ -135,6 +135,8 @@ const useStore = create<State>()(
 )
 ```
 
+In Redux DevTools, writes show up as named actions: `setPath/user.profile.name` (also used by the `usePath` setter) and `resetPath/user.profile`.
+
 ## TypeScript Support
 
 The middleware leverages advanced recursive types to provide autocomplete and validation.

@@ -451,7 +451,8 @@ export interface StoreWithPaths<T, O extends PathsOptions = {}> {
    * intermediate containers are created: an array when the next segment is
    * numeric, otherwise a plain object.
    *
-   * Safe to call anywhere, including outside React.
+   * Safe to call anywhere, including outside React. With the `devtools`
+   * middleware, the write is recorded as a `setPath/<path>` action.
    *
    * @template P - The path, constrained to `Paths<T, O>` for autocomplete.
    * @param path - Dot path to the value to write.
@@ -494,6 +495,9 @@ export interface StoreWithPaths<T, O extends PathsOptions = {}> {
    * A path that did not exist in the initial state is removed (the key is
    * deleted, or the array element spliced out) rather than set to
    * `undefined`.
+   *
+   * With the `devtools` middleware, the reset is recorded as a
+   * `resetPath/<path>` action.
    *
    * @param path - Dot path of the value or subtree to reset.
    *
@@ -564,6 +568,15 @@ type DotPathMiddleware = <
 
 /** State type of a store API `S`, read from its `getState` return type. */
 type ExtractState<S> = S extends { getState: () => infer T } ? T : never;
+/**
+ * `setState` as `devtools` patches it, taking an action name as a third
+ * argument. Plain `setState` accepts and ignores the extra argument.
+ */
+type SetStateWithAction = (
+  state: unknown,
+  replace: true,
+  action: string
+) => void;
 /** `T` with the keys of `U` overwritten by `U`'s (Zustand's mutator idiom). */
 type Write<T, U> = Omit<T, keyof U> & U;
 
@@ -593,15 +606,24 @@ const dotPathImpl =
       const augmentedApi = api as unknown as StoreWithPaths<any>;
 
       /**
-       * Applies an immutable write at `segments`.
+       * Applies an immutable write at `segments` and names it `action`.
        *
        * Reads `api.setState` on every call instead of using the `set` captured
        * above. Middleware such as `devtools`, `persist` and `immer` patch
        * `api.setState`, so this reaches them whichever side of `dotPath` they
-       * were composed on.
+       * were composed on. The third argument is the action name `devtools`
+       * records; plain `setState` ignores it.
        */
-      const write = (segments: string[], valueOrUpdater: unknown) => {
-        api.setState(deepSet(get(), segments, valueOrUpdater), true);
+      const write = (
+        segments: string[],
+        valueOrUpdater: unknown,
+        action: string
+      ) => {
+        (api.setState as SetStateWithAction)(
+          deepSet(get(), segments, valueOrUpdater),
+          true,
+          action
+        );
       };
 
       augmentedApi.getPath = (path: string, defaultValue?: unknown): any => {
@@ -613,7 +635,7 @@ const dotPathImpl =
       };
 
       augmentedApi.setPath = (path: string, valueOrUpdater: unknown) => {
-        write(parsePath(path), valueOrUpdater);
+        write(parsePath(path), valueOrUpdater, `setPath/${path}`);
       };
 
       augmentedApi.resetPath = (path: string) => {
@@ -623,7 +645,7 @@ const dotPathImpl =
         // `undefined`, so reset restores "was never set" faithfully.
         const valueToRestore =
           initialValue === undefined ? DELETE : snapshot(initialValue);
-        write(segments, valueToRestore);
+        write(segments, valueToRestore, `resetPath/${path}`);
       };
 
       augmentedApi.subscribePath = (
@@ -664,8 +686,8 @@ const dotPathImpl =
         const value = useStore(api as any, selector);
 
         const setter = useCallback(
-          (updater: unknown) => write(segments, updater),
-          [segments]
+          (updater: unknown) => write(segments, updater, `setPath/${path}`),
+          [segments, path]
         );
 
         return [value, setter];
@@ -704,6 +726,8 @@ const dotPathImpl =
  * Composes with other middleware in any order. Path writes go through the
  * store's current `api.setState`, so middleware that patches it (`devtools`,
  * `persist`, `immer`) sees them whether it sits inside or outside `dotPath`.
+ * `devtools` records them as named actions: `setPath/<path>` (also used by
+ * the `usePath` setter) and `resetPath/<path>`.
  *
  * Middleware that only wraps the `set` it passes down, without patching
  * `api.setState`, does not see path writes in either order.

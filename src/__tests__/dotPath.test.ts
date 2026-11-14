@@ -420,7 +420,7 @@ describe('composition order with other middleware', () => {
     it.each([
       ['dotPath outside devtools', 'outer'],
       ['dotPath inside devtools', 'inner'],
-    ] as const)('records path writes with %s', (_, order) => {
+    ] as const)('records named path actions with %s', (_, order) => {
       devtoolsMock = mockDevtools();
       const opts = { enabled: true };
       const store =
@@ -432,7 +432,11 @@ describe('composition order with other middleware', () => {
       store.setPath('user.age', (age) => age + 1);
       store.resetPath('user');
 
-      expect(devtoolsMock.sentTypes()).toHaveLength(3);
+      expect(devtoolsMock.sentTypes()).toEqual([
+        'setPath/user.name',
+        'setPath/user.age',
+        'resetPath/user',
+      ]);
     });
   });
 });
